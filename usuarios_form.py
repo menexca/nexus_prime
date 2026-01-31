@@ -31,7 +31,7 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            query = "SELECT rol FROM usuarios_sistema WHERE id_usuario = %s"
+            query = "SELECT rol FROM seg_usuarios WHERE id_usuario = %s"
             cur.execute(query, (self.id_usuario_actual,))
             res = cur.fetchone()
             conn.close()
@@ -199,7 +199,7 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            cur.execute("SELECT id_usuario, usuario_login, nombre_completo FROM usuarios_sistema ORDER BY id_usuario")
+            cur.execute("SELECT id_usuario, usuario_login, nombre_completo FROM seg_usuarios ORDER BY id_usuario")
             users = cur.fetchall()
             conn.close()
             for u in users:
@@ -219,9 +219,9 @@ class UsuariosForm(QWidget):
                 SELECT u.usuario_login, u.nombre_completo, u.rol, u.estatus,
                        ua.usuario_login, u.fecha_creacion,
                        ub.usuario_login, u.fecha_modifica
-                FROM usuarios_sistema u
-                LEFT JOIN usuarios_sistema ua ON u.id_user_crea = ua.id_usuario
-                LEFT JOIN usuarios_sistema ub ON u.id_user_mod = ub.id_usuario
+                FROM seg_usuarios u
+                LEFT JOIN seg_usuarios ua ON u.id_user_crea = ua.id_usuario
+                LEFT JOIN seg_usuarios ub ON u.id_user_mod = ub.id_usuario
                 WHERE u.id_usuario = %s
             """
             cur.execute(query, (uid,))
@@ -303,13 +303,13 @@ class UsuariosForm(QWidget):
             
             if self.id_usuario_seleccionado is None:
                 # Verificar duplicado
-                cur.execute("SELECT 1 FROM usuarios_sistema WHERE usuario_login = %s", (login,))
+                cur.execute("SELECT 1 FROM seg_usuarios WHERE usuario_login = %s", (login,))
                 if cur.fetchone():
                     QMessageBox.warning(self, "Duplicado", f"El usuario '{login}' ya existe.")
                     conn.close(); return
 
                 query = """
-                    INSERT INTO usuarios_sistema (usuario_login, nombre_completo, password_hash, rol, estatus, id_user_crea)
+                    INSERT INTO seg_usuarios (usuario_login, nombre_completo, password_hash, rol, estatus, id_user_crea)
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """
                 cur.execute(query, (login, nombre, nueva_pass_hash, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual))
@@ -317,14 +317,14 @@ class UsuariosForm(QWidget):
             else:
                 if nueva_pass_hash:
                     query = """
-                        UPDATE usuarios_sistema SET 
+                        UPDATE seg_usuarios SET 
                         nombre_completo=%s, password_hash=%s, rol=%s, estatus=%s, id_user_mod=%s
                         WHERE id_usuario=%s
                     """
                     params = (nombre, nueva_pass_hash, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual, self.id_usuario_seleccionado)
                 else:
                     query = """
-                        UPDATE usuarios_sistema SET 
+                        UPDATE seg_usuarios SET 
                         nombre_completo=%s, rol=%s, estatus=%s, id_user_mod=%s
                         WHERE id_usuario=%s
                     """
@@ -357,7 +357,7 @@ class UsuariosForm(QWidget):
             try:
                 conn = psycopg2.connect(**DB_PARAMS)
                 cur = conn.cursor()
-                cur.execute("DELETE FROM usuarios_sistema WHERE id_usuario=%s", (self.id_usuario_seleccionado,))
+                cur.execute("DELETE FROM seg_usuarios WHERE id_usuario=%s", (self.id_usuario_seleccionado,))
                 conn.commit()
                 conn.close()
                 self.limpiar_formulario()

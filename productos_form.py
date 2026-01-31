@@ -1,418 +1,540 @@
 import sys
-import psycopg2
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QCheckBox, QComboBox, QTextEdit, QTabWidget, QFormLayout, 
-    QMessageBox, QDoubleSpinBox, QDateEdit, QFrame, QApplication
+    QComboBox, QTabWidget, QCheckBox, QTableWidget, QHeaderView, 
+    QGroupBox, QFormLayout, QPushButton, QFrame, QDoubleSpinBox,
+    QTableWidgetItem, QFileDialog, QRadioButton, QButtonGroup, QScrollArea
 )
-from PyQt6.QtGui import QFont, QPalette, QColor
-from PyQt6.QtCore import Qt, QDate
-from db_config import DB_PARAMS
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
 
 class ProductosForm(QWidget):
     def __init__(self, cod_compania, id_usuario, nombre_empresa):
         super().__init__()
+        # Contexto de Base de Datos
         self.cod_compania = cod_compania
         self.id_usuario = id_usuario
-        self.nombre_empresa = nombre_empresa
-        self.rol_usuario = "Operador" # Se debe validar contra BD
         
-        self.setWindowTitle(f"Gestión de Productos - {self.nombre_empresa}")
+        # Variables Globales de la Ventana
+        self.tasa_cambio_actual = 60.50 # ESTO DEBE VENIR DE BD (cfg_tasas)
+        self.ruta_imagen_actual = ""
+        
+        self.setWindowTitle("Ficha Maestra de Productos")
         self.resize(1100, 750)
-        
-        self.id_producto_seleccionado = None
-        
-        self.verificar_permisos()
-        self.apply_styles()
         self.init_ui()
-        self.cargar_proveedores() # Cargar lista para el combo
-
-    def verificar_permisos(self):
-        try:
-            conn = psycopg2.connect(**DB_PARAMS)
-            cur = conn.cursor()
-            cur.execute("SELECT rol FROM usuarios_sistema WHERE id_usuario = %s", (self.id_usuario,))
-            res = cur.fetchone()
-            conn.close()
-            if res: self.rol_usuario = res[0]
-        except: pass
-
-    def apply_styles(self):
-        palette = self.palette()
-        palette.setColor(QPalette.ColorRole.Window, QColor("#F0F2F5")) 
-        self.setPalette(palette)
-        self.setFont(QFont("Segoe UI", 10))
-
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #007BFF; color: white; border-radius: 5px;
-                padding: 8px 15px; border: none; font-weight: bold;
-            }
-            QPushButton:hover { background-color: #0056b3; }
-            QPushButton:disabled { background-color: #cccccc; color: #666666; }
-            QLineEdit, QComboBox, QDoubleSpinBox, QDateEdit {
-                border: 1px solid #cccccc; border-radius: 4px; padding: 5px; background-color: white;
-            }
-            QLineEdit:focus, QDoubleSpinBox:focus { border: 1px solid #007BFF; }
-            QTabWidget::pane { border: 1px solid #cccccc; background-color: white; }
-            QTabBar::tab { background: #E0E6ED; padding: 8px; border-top-left-radius: 4px; border-top-right-radius: 4px; }
-            QTabBar::tab:selected { background: #FFFFFF; font-weight: bold; }
-        """)
+        
+        # Inicializar lógica (Simulado)
+        self.cargar_combos_simulados()
+        self.recalcular_costos_importacion() # Para inicializar ceros
 
     def init_ui(self):
-        main = QVBoxLayout()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
 
-        # --- HEADER ---
-        header = QHBoxLayout()
-        header.addWidget(QLabel("🔍 Buscar:"))
-        self.txt_buscar = QLineEdit()
-        self.txt_buscar.setPlaceholderText("Código o Nombre...")
-        self.txt_buscar.returnPressed.connect(self.buscar_producto)
-        header.addWidget(self.txt_buscar)
-        
-        btn_buscar = QPushButton("Buscar")
-        btn_buscar.clicked.connect(self.buscar_producto)
-        header.addWidget(btn_buscar)
-        
-        self.btn_limpiar = QPushButton("Nuevo")
-        self.btn_limpiar.setStyleSheet("background-color: #28a745; color: white;")
-        self.btn_limpiar.clicked.connect(self.limpiar_formulario)
-        header.addWidget(self.btn_limpiar)
-        main.addLayout(header)
+        # ======================================================================
+        # SECCIÓN 1: ENCABEZADO PERSISTENTE (KPIs y Datos Clave)
+        # ======================================================================
+        header_frame = QFrame()
+        header_frame.setStyleSheet("background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 8px;")
+        header_layout = QHBoxLayout(header_frame)
 
-        # --- TABS ---
-        self.tabs = QTabWidget()
-
-        # TAB 1: Identificación y Ubicación
-        tab1 = QWidget()
-        l1 = QHBoxLayout(tab1)
+        # 1.1 Imagen del Producto
+        self.lbl_imagen = QLabel("SIN IMAGEN")
+        self.lbl_imagen.setFixedSize(110, 110)
+        self.lbl_imagen.setStyleSheet("background-color: #e9ecef; border: 2px dashed #adb5bd; color: #6c757d;")
+        self.lbl_imagen.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_imagen.setScaledContents(True)
+        # Evento Clic para cargar imagen (se conecta luego)
         
-        f1 = QFormLayout()
-        self.txt_codigo = QLineEdit()
-        f1.addRow("Código Producto *:", self.txt_codigo)
+        btn_img_layout = QVBoxLayout()
+        btn_img_layout.addWidget(self.lbl_imagen)
+        self.btn_cargar_img = QPushButton("Cambiar")
+        self.btn_cargar_img.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_cargar_img.clicked.connect(self.seleccionar_imagen)
+        btn_img_layout.addWidget(self.btn_cargar_img)
+        
+        header_layout.addLayout(btn_img_layout)
+
+        # 1.2 Datos de Identificación Principal
+        ident_layout = QFormLayout()
+        
+        self.txt_sku = QLineEdit()
+        self.txt_sku.setPlaceholderText("Ej: PROD-10025")
+        self.txt_sku.setStyleSheet("font-weight: bold; font-size: 14px;")
+        
         self.txt_nombre = QLineEdit()
-        f1.addRow("Nombre *:", self.txt_nombre)
-        self.txt_desc = QTextEdit(); self.txt_desc.setMaximumHeight(50)
-        f1.addRow("Descripción:", self.txt_desc)
-        self.cmb_origen = QComboBox(); self.cmb_origen.addItems(["NACIONAL", "IMPORTADO"])
-        f1.addRow("Origen:", self.cmb_origen)
-        self.cmb_unidad = QComboBox(); self.cmb_unidad.addItems(["UNIDAD", "KILOS", "BULTO", "CAJA", "LITRO"])
-        f1.addRow("Unidad:", self.cmb_unidad)
+        self.txt_nombre.setPlaceholderText("Descripción Comercial del Producto...")
+        self.txt_nombre.setStyleSheet("font-weight: bold; font-size: 16px; color: #2c3e50;")
         
-        f2 = QFormLayout()
-        f2.addRow(QLabel("<b>Ubicación Física</b>"))
-        self.txt_almacen = QLineEdit()
-        f2.addRow("Almacén:", self.txt_almacen)
-        self.txt_pasillo = QLineEdit()
-        f2.addRow("Pasillo:", self.txt_pasillo)
-        self.txt_estante = QLineEdit()
-        f2.addRow("Estante:", self.txt_estante)
-        self.txt_peldano = QLineEdit()
-        f2.addRow("Peldaño:", self.txt_peldano)
-        self.chk_activo = QCheckBox("Activo"); self.chk_activo.setChecked(True)
-        f2.addRow("Estado:", self.chk_activo)
+        self.txt_barra = QLineEdit()
+        self.txt_barra.setPlaceholderText("Escanee código EAN/UPC...")
+        self.txt_barra.setClearButtonEnabled(True)
 
-        l1.addLayout(f1); l1.addLayout(f2)
-        self.tabs.addTab(tab1, "📦 Datos Generales")
+        ident_layout.addRow("Código SKU:", self.txt_sku)
+        ident_layout.addRow("Nombre:", self.txt_nombre)
+        ident_layout.addRow("Cod. Barras:", self.txt_barra)
+        
+        header_layout.addLayout(ident_layout, stretch=2)
 
-        # TAB 2: Costos y Contabilidad (Cálculos automáticos)
-        tab2 = QWidget()
-        l2 = QHBoxLayout(tab2)
+        # 1.3 Estado y KPIs (Display Digital)
+        kpi_layout = QVBoxLayout()
         
-        f3 = QFormLayout()
-        f3.addRow(QLabel("<b>Estructura de Costos</b>"))
+        # Switch Activo/Inactivo
+        self.chk_activo = QCheckBox("PRODUCTO ACTIVO")
+        self.chk_activo.setChecked(True)
+        self.chk_activo.setStyleSheet("font-weight: bold; color: #27ae60; font-size: 13px;")
         
-        self.spin_costo = QDoubleSpinBox(); self.spin_costo.setRange(0, 1e9); self.spin_costo.setPrefix("$ ")
-        self.spin_costo.valueChanged.connect(self.calcular_montos)
-        f3.addRow("Costo Unitario:", self.spin_costo)
-        
-        self.spin_porc_desc = QDoubleSpinBox(); self.spin_porc_desc.setRange(0, 100); self.spin_porc_desc.setSuffix(" %")
-        self.spin_porc_desc.valueChanged.connect(self.calcular_montos)
-        f3.addRow("% Descuento:", self.spin_porc_desc)
-        
-        self.spin_monto_desc = QDoubleSpinBox(); self.spin_monto_desc.setRange(0, 1e9); self.spin_monto_desc.setReadOnly(True)
-        self.spin_monto_desc.setStyleSheet("background: #f0f0f0;")
-        f3.addRow("Monto Descuento:", self.spin_monto_desc)
-        
-        self.spin_neto = QDoubleSpinBox(); self.spin_neto.setRange(0, 1e9); self.spin_neto.setReadOnly(True)
-        self.spin_neto.setStyleSheet("background: #e6f3ff; font-weight: bold;")
-        f3.addRow("Neto (Sin IVA):", self.spin_neto)
-        
-        self.spin_iva_porc = QDoubleSpinBox(); self.spin_iva_porc.setValue(16.00); self.spin_iva_porc.setSuffix(" %")
-        self.spin_iva_porc.valueChanged.connect(self.calcular_montos)
-        f3.addRow("% IVA:", self.spin_iva_porc)
-        
-        self.spin_monto_iva = QDoubleSpinBox(); self.spin_monto_iva.setRange(0, 1e9); self.spin_monto_iva.setReadOnly(True)
-        f3.addRow("Monto IVA:", self.spin_monto_iva)
-        
-        f4 = QFormLayout()
-        f4.addRow(QLabel("<b>Datos Contables</b>"))
-        self.cmb_proveedor = QComboBox() # Se llena desde BD
-        f4.addRow("Proveedor:", self.cmb_proveedor)
-        self.txt_cuenta_cxp = QLineEdit()
-        f4.addRow("Cta. Por Pagar:", self.txt_cuenta_cxp)
-        self.txt_tipo_costo = QLineEdit()
-        self.txt_tipo_costo.setPlaceholderText("Ej: Reposición")
-        f4.addRow("Tipo Costo:", self.txt_tipo_costo)
-        
-        l2.addLayout(f3); l2.addLayout(f4)
-        self.tabs.addTab(tab2, "💰 Costos y Contable")
+        # Display de Stock Total
+        lbl_stock_titulo = QLabel("Existencia Total")
+        lbl_stock_titulo.setStyleSheet("color: #7f8c8d; font-size: 11px;")
+        self.lbl_stock_val = QLabel("0.00")
+        self.lbl_stock_val.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.lbl_stock_val.setStyleSheet("font-size: 24px; font-weight: bold; color: #2980b9; border-bottom: 2px solid #3498db;")
 
-        # TAB 3: Inventario y Fechas
-        tab3 = QWidget()
-        l3 = QHBoxLayout(tab3)
-        
-        f5 = QFormLayout()
-        self.spin_cantidad = QDoubleSpinBox(); self.spin_cantidad.setRange(0, 1e6)
-        f5.addRow("Cantidad Actual:", self.spin_cantidad)
-        
-        self.spin_pendiente = QDoubleSpinBox(); self.spin_pendiente.setRange(0, 1e6)
-        f5.addRow("Pendiente (Recibir):", self.spin_pendiente)
-        
-        self.spin_devuelto = QDoubleSpinBox(); self.spin_devuelto.setRange(0, 1e6)
-        f5.addRow("Devuelto (Proveedor):", self.spin_devuelto)
-        
-        self.txt_doc_dev = QLineEdit()
-        f5.addRow("Doc. Devolución:", self.txt_doc_dev)
-        
-        f6 = QFormLayout()
-        self.date_elab = QDateEdit(); self.date_elab.setCalendarPopup(True); self.date_elab.setDate(QDate.currentDate())
-        f6.addRow("Fecha Elaboración:", self.date_elab)
-        self.date_venc = QDateEdit(); self.date_venc.setCalendarPopup(True); self.date_venc.setDate(QDate.currentDate().addDays(30))
-        f6.addRow("Fecha Vencimiento:", self.date_venc)
-        self.txt_comentario = QTextEdit()
-        f6.addRow("Comentario:", self.txt_comentario)
+        # Tasa de Cambio (Informativo)
+        self.lbl_tasa = QLabel(f"Tasa Ref: {self.tasa_cambio_actual} Bs/$")
+        self.lbl_tasa.setStyleSheet("color: #e67e22; font-weight: bold;")
 
-        l3.addLayout(f5); l3.addLayout(f6)
-        self.tabs.addTab(tab3, "📅 Fechas y Stocks")
-
-        main.addWidget(self.tabs)
-
-        # --- FOOTER AUDITORÍA ---
-        audit_frame = QFrame()
-        audit_frame.setStyleSheet("background: #ddd; border-radius: 4px;")
-        al = QHBoxLayout(audit_frame)
-        self.lbl_audit_crea = QLabel("Creado: -"); al.addWidget(self.lbl_audit_crea)
-        al.addStretch()
-        self.lbl_audit_mod = QLabel("Modif: -"); al.addWidget(self.lbl_audit_mod)
-        main.addWidget(audit_frame)
-
-        # --- BOTONES ---
-        btns = QHBoxLayout()
-        self.btn_guardar = QPushButton("GUARDAR PRODUCTO")
-        self.btn_guardar.setFixedHeight(40)
-        self.btn_guardar.clicked.connect(self.guardar_producto)
+        kpi_layout.addWidget(self.chk_activo)
+        kpi_layout.addStretch()
+        kpi_layout.addWidget(lbl_stock_titulo)
+        kpi_layout.addWidget(self.lbl_stock_val)
+        kpi_layout.addWidget(self.lbl_tasa)
         
-        self.btn_eliminar = QPushButton("ELIMINAR")
-        self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
-        self.btn_eliminar.clicked.connect(self.eliminar_producto)
+        header_layout.addLayout(kpi_layout, stretch=1)
+        main_layout.addWidget(header_frame)
+
+        # ======================================================================
+        # SECCIÓN 2: PESTAÑAS DETALLADAS
+        # ======================================================================
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabWidget::pane { border: 1px solid #ccc; }")
+
+        # >> Pestaña 1: General
+        self.tab_general = QWidget()
+        self.setup_tab_general()
+        self.tabs.addTab(self.tab_general, "📋 Datos Generales y Logística")
         
-        # Permisos
-        if self.rol_usuario != "Administrador":
-            self.btn_eliminar.setEnabled(False)
-            self.btn_eliminar.setToolTip("Solo Administrador")
-
-        btns.addStretch()
-        btns.addWidget(self.btn_eliminar)
-        btns.addWidget(self.btn_guardar)
-        main.addLayout(btns)
-
-        self.setLayout(main)
-
-    # --- LÓGICA ---
-
-    def calcular_montos(self):
-        """Calcula Neto, Monto Descuento e IVA en tiempo real"""
-        costo = self.spin_costo.value()
-        porc_desc = self.spin_porc_desc.value()
-        porc_iva = self.spin_iva_porc.value()
+        # >> Pestaña 2: Existencias
+        self.tab_stock = QWidget()
+        self.setup_tab_stock()
+        self.tabs.addTab(self.tab_stock, "🏭 Existencias y Ubicaciones")
         
-        monto_desc = costo * (porc_desc / 100)
-        neto = costo - monto_desc
-        monto_iva = neto * (porc_iva / 100)
-        
-        self.spin_monto_desc.setValue(monto_desc)
-        self.spin_neto.setValue(neto)
-        self.spin_monto_iva.setValue(monto_iva)
+        # >> Pestaña 3: Costos y Precios
+        self.tab_precios = QWidget()
+        self.setup_tab_precios()
+        self.tabs.addTab(self.tab_precios, "💰 Costos, Importación y Precios")
 
-    def cargar_proveedores(self):
-        self.cmb_proveedor.clear()
-        try:
-            conn = psycopg2.connect(**DB_PARAMS)
-            cur = conn.cursor()
-            cur.execute("SELECT cod_proveedor, nombre_provider FROM maestro_proveedores WHERE cod_compania=%s", (self.cod_compania,))
-            rows = cur.fetchall()
-            conn.close()
-            self.cmb_proveedor.addItem("Sin Proveedor", None)
-            for r in rows:
-                self.cmb_proveedor.addItem(f"{r[1]} ({r[0]})", r[0])
-        except: pass
+        main_layout.addWidget(self.tabs)
 
-    def buscar_producto(self):
-        term = self.txt_buscar.text().strip()
-        if not term: return
+        # ======================================================================
+        # SECCIÓN 3: BOTONERA DE ACCIÓN
+        # ======================================================================
+        btn_layout = QHBoxLayout()
         
-        try:
-            conn = psycopg2.connect(**DB_PARAMS)
-            cur = conn.cursor()
-            query = """
-                SELECT p.cod_producto, p.nombre_producto, p.descripcion, p.origen, p.unidad,
-                       p.almacen, p.pasillo, p.estante, p.peldano,
-                       p.cantidad, p.pendiente, p.devuelto, p.documento_dev, p.fecha_elaboracion, p.fecha_vencimiento,
-                       p.costo_unitario, p.porc_descuento, p.iva_porc,
-                       p.id_proveedor, p.cuenta_por_pagar, p.tipo_costo, p.estatus, p.comentario,
-                       u1.usuario_login, p.fecha_registro, u2.usuario_login, p.fecha_modifica
-                FROM maestro_productos p
-                LEFT JOIN usuarios_sistema u1 ON p.id_user_crea = u1.id_usuario
-                LEFT JOIN usuarios_sistema u2 ON p.id_user_mod = u2.id_usuario
-                WHERE p.cod_compania = %s AND (p.cod_producto = %s OR p.nombre_producto ILIKE %s)
-            """
-            cur.execute(query, (self.cod_compania, term, f"%{term}%"))
-            data = cur.fetchone()
-            conn.close()
+        btn_cancelar = QPushButton("Cancelar / Salir")
+        btn_cancelar.setFixedSize(120, 40)
+        btn_cancelar.clicked.connect(self.close)
+        
+        btn_guardar = QPushButton("💾 GUARDAR PRODUCTO")
+        btn_guardar.setFixedSize(180, 40)
+        btn_guardar.setStyleSheet("""
+            QPushButton { background-color: #27ae60; color: white; font-weight: bold; border-radius: 4px; }
+            QPushButton:hover { background-color: #2ecc71; }
+        """)
+        btn_guardar.clicked.connect(self.guardar_producto)
+
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancelar)
+        btn_layout.addWidget(btn_guardar)
+        
+        main_layout.addLayout(btn_layout)
+
+        self.setLayout(main_layout)
+
+    # --------------------------------------------------------------------------
+    # SETUP: PESTAÑA GENERAL
+    # --------------------------------------------------------------------------
+    def setup_tab_general(self):
+        layout = QHBoxLayout(self.tab_general)
+        
+        # COLUMNA IZQUIERDA: Clasificación
+        col_left = QVBoxLayout()
+        grp_clasif = QGroupBox("Clasificación")
+        form_clasif = QFormLayout()
+        
+        self.cmb_marca = QComboBox()
+        self.cmb_grupo = QComboBox()
+        self.cmb_unidad = QComboBox()
+        self.cmb_impuesto = QComboBox()
+        
+        self.chk_servicio = QCheckBox("Es un Servicio (No maneja stock)")
+        self.chk_lotes = QCheckBox("Controlar por Lotes y Vencimiento")
+        
+        form_clasif.addRow("Marca:", self.cmb_marca)
+        form_clasif.addRow("Grupo / Categoría:", self.cmb_grupo)
+        form_clasif.addRow("Unidad Medida:", self.cmb_unidad)
+        form_clasif.addRow("Impuesto (IVA):", self.cmb_impuesto)
+        form_clasif.addRow("", self.chk_servicio)
+        form_clasif.addRow("", self.chk_lotes)
+        
+        grp_clasif.setLayout(form_clasif)
+        col_left.addWidget(grp_clasif)
+        
+        # Datos Extras
+        grp_extra = QGroupBox("Datos Administrativos")
+        form_extra = QFormLayout()
+        
+        self.txt_cod_alterno = QLineEdit()
+        self.txt_cod_alterno.setPlaceholderText("Ref. Prov. o Fabricante")
+        
+        self.cmb_costeo = QComboBox()
+        self.cmb_costeo.addItems(["PROMEDIO PONDERADO", "ULTIMO COSTO", "PEPS (FIFO)"])
+        
+        self.cmb_cta_contable = QComboBox() # Cargar desde Plan de Cuentas
+        
+        form_extra.addRow("Cód. Alterno:", self.txt_cod_alterno)
+        form_extra.addRow("Método Costeo:", self.cmb_costeo)
+        form_extra.addRow("Cuenta Contable:", self.cmb_cta_contable)
+        
+        grp_extra.setLayout(form_extra)
+        col_left.addWidget(grp_extra)
+        layout.addLayout(col_left)
+        
+        # COLUMNA DERECHA: Logística y Volumetría
+        col_right = QVBoxLayout()
+        grp_logistica = QGroupBox("Dimensiones y Logística (Para Despacho)")
+        form_log = QFormLayout()
+        
+        # Usamos SpinBox para números
+        self.spin_peso = QDoubleSpinBox()
+        self.spin_peso.setSuffix(" Kg")
+        self.spin_peso.setRange(0, 99999.99)
+        
+        self.spin_alto = QDoubleSpinBox()
+        self.spin_alto.setSuffix(" cm")
+        self.spin_alto.setRange(0, 9999.99)
+        self.spin_alto.valueChanged.connect(self.calcular_volumen)
+
+        self.spin_ancho = QDoubleSpinBox()
+        self.spin_ancho.setSuffix(" cm")
+        self.spin_ancho.setRange(0, 9999.99)
+        self.spin_ancho.valueChanged.connect(self.calcular_volumen)
+
+        self.spin_prof = QDoubleSpinBox()
+        self.spin_prof.setSuffix(" cm")
+        self.spin_prof.setRange(0, 9999.99)
+        self.spin_prof.valueChanged.connect(self.calcular_volumen)
+        
+        self.lbl_volumen_m3 = QLabel("0.000 m³")
+        self.lbl_volumen_m3.setStyleSheet("font-weight: bold; color: #555;")
+        
+        self.spin_bulto = QDoubleSpinBox()
+        self.spin_bulto.setDecimals(0)
+        self.spin_bulto.setSuffix(" Unds")
+        self.spin_bulto.setValue(1)
+
+        form_log.addRow("Peso Bruto:", self.spin_peso)
+        form_log.addRow("Alto:", self.spin_alto)
+        form_log.addRow("Ancho:", self.spin_ancho)
+        form_log.addRow("Profundidad:", self.spin_prof)
+        form_log.addRow("Volumen Calc.:", self.lbl_volumen_m3)
+        form_log.addRow("Unds x Bulto:", self.spin_bulto)
+        
+        grp_logistica.setLayout(form_log)
+        col_right.addWidget(grp_logistica)
+        
+        # Descripción Larga
+        grp_desc = QGroupBox("Descripción Detallada (Web / Presupuestos)")
+        layout_desc = QVBoxLayout()
+        self.txt_desc_larga = QLineEdit() # O QTextEdit si prefieres multilínea
+        layout_desc.addWidget(self.txt_desc_larga)
+        grp_desc.setLayout(layout_desc)
+        col_right.addWidget(grp_desc)
+        
+        layout.addLayout(col_right)
+
+    # --------------------------------------------------------------------------
+    # SETUP: PESTAÑA STOCK (Multi-Almacén)
+    # --------------------------------------------------------------------------
+    def setup_tab_stock(self):
+        layout = QVBoxLayout(self.tab_stock)
+        
+        info_lbl = QLabel("ℹ️ La existencia física se gestiona mediante Movimientos (Entradas/Salidas). "
+                          "Aquí puede asignar ubicaciones físicas por almacén.")
+        info_lbl.setStyleSheet("color: #666; font-style: italic; margin-bottom: 5px;")
+        layout.addWidget(info_lbl)
+        
+        # Tabla de Existencias
+        self.grid_stock = QTableWidget()
+        self.grid_stock.setColumnCount(6)
+        headers = ["Almacén", "Ubicación (Pasillo/Estante)", "Existencia Real", "Comprometido", "Por Llegar", "Disponible"]
+        self.grid_stock.setHorizontalHeaderLabels(headers)
+        self.grid_stock.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.grid_stock.verticalHeader().setVisible(False)
+        self.grid_stock.setAlternatingRowColors(True)
+        
+        # Ejemplo Visual (Esto se llenará con DB)
+        self.grid_stock.setRowCount(2)
+        # Fila 1
+        self.grid_stock.setItem(0, 0, QTableWidgetItem("ALM-01: PRINCIPAL"))
+        self.grid_stock.setItem(0, 1, QTableWidgetItem("P-05-E-02")) # Editable
+        self.grid_stock.setItem(0, 2, QTableWidgetItem("100")) # Solo lectura
+        self.grid_stock.setItem(0, 3, QTableWidgetItem("10"))  # Solo lectura
+        self.grid_stock.setItem(0, 4, QTableWidgetItem("50"))  # Solo lectura
+        item_disp = QTableWidgetItem("90")
+        item_disp.setForeground(QColor("green"))
+        item_disp.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+        self.grid_stock.setItem(0, 5, item_disp)
+        
+        layout.addWidget(self.grid_stock)
+
+    # --------------------------------------------------------------------------
+    # SETUP: PESTAÑA COSTOS Y PRECIOS
+    # --------------------------------------------------------------------------
+    def setup_tab_precios(self):
+        layout = QVBoxLayout(self.tab_precios)
+        
+        # 3.1 ZONA DE COSTOS (Arriba)
+        grp_costos = QGroupBox("Estructura de Costos")
+        costo_layout = QHBoxLayout()
+        
+        # Columna Config
+        col_conf_cost = QVBoxLayout()
+        self.chk_importado = QCheckBox("Es Producto Importado")
+        self.chk_importado.toggled.connect(self.toggle_importacion)
+        
+        self.radio_mantener_margen = QRadioButton("Mantener Margen %")
+        self.radio_mantener_precio = QRadioButton("Mantener Precio Final")
+        self.radio_mantener_margen.setChecked(True)
+        
+        bg = QButtonGroup(self)
+        bg.addButton(self.radio_mantener_margen)
+        bg.addButton(self.radio_mantener_precio)
+        
+        col_conf_cost.addWidget(self.chk_importado)
+        col_conf_cost.addWidget(QLabel("Al cambiar costo:"))
+        col_conf_cost.addWidget(self.radio_mantener_margen)
+        col_conf_cost.addWidget(self.radio_mantener_precio)
+        col_conf_cost.addStretch()
+        costo_layout.addLayout(col_conf_cost)
+        
+        # Columna Inputs Costos (Se habilitan si es importado)
+        self.frm_import = QFormLayout()
+        
+        self.spin_fob = self.crear_spin_moneda()
+        self.spin_flete = self.crear_spin_moneda()
+        self.spin_seguro = self.crear_spin_moneda()
+        self.spin_arancel = self.crear_spin_moneda()
+        self.spin_otros = self.crear_spin_moneda()
+        
+        # Conectar todos al recalculo
+        self.spin_fob.valueChanged.connect(self.recalcular_costos_importacion)
+        self.spin_flete.valueChanged.connect(self.recalcular_costos_importacion)
+        self.spin_seguro.valueChanged.connect(self.recalcular_costos_importacion)
+        self.spin_arancel.valueChanged.connect(self.recalcular_costos_importacion)
+        self.spin_otros.valueChanged.connect(self.recalcular_costos_importacion)
+
+        self.frm_import.addRow("Costo FOB ($):", self.spin_fob)
+        self.frm_import.addRow("Fletes + Gastos ($):", self.spin_flete)
+        self.frm_import.addRow("Seguros ($):", self.spin_seguro)
+        self.frm_import.addRow("Aranceles/Aduana ($):", self.spin_arancel)
+        
+        costo_layout.addLayout(self.frm_import)
+        
+        # Columna Resultado Costo
+        res_layout = QVBoxLayout()
+        res_layout.addWidget(QLabel("COSTO BASE FINAL ($)"))
+        self.spin_costo_final = self.crear_spin_moneda()
+        self.spin_costo_final.setStyleSheet("font-size: 16px; font-weight: bold; background-color: #e8f8f5;")
+        self.spin_costo_final.valueChanged.connect(self.recalcular_tabla_precios) # Gatilla actualización de grid
+        
+        res_layout.addWidget(self.spin_costo_final)
+        
+        res_layout.addWidget(QLabel("Costo en Bs (Ref):"))
+        self.lbl_costo_bs = QLabel("0.00 Bs")
+        self.lbl_costo_bs.setStyleSheet("font-weight: bold; color: #7f8c8d;")
+        res_layout.addWidget(self.lbl_costo_bs)
+        
+        res_layout.addStretch()
+        costo_layout.addLayout(res_layout)
+        
+        grp_costos.setLayout(costo_layout)
+        layout.addWidget(grp_costos)
+        
+        # 3.2 ZONA DE PRECIOS (Abajo)
+        grp_precios = QGroupBox("Tarifas de Venta")
+        grid_layout = QVBoxLayout()
+        
+        self.grid_precios = QTableWidget()
+        self.grid_precios.setColumnCount(6)
+        cols_precios = ["Tarifa / Lista", "Margen Utilidad %", "Precio Neto ($)", "IVA ($)", "Precio Final ($)", "Precio Final (Bs)"]
+        self.grid_precios.setHorizontalHeaderLabels(cols_precios)
+        self.grid_precios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # Inicializar con 3 tarifas base
+        self.init_tabla_precios()
+        
+        # Conectar cambio en la celda de Margen (Columna 1)
+        self.grid_precios.cellChanged.connect(self.on_grid_precios_changed)
+        
+        grid_layout.addWidget(self.grid_precios)
+        grp_precios.setLayout(grid_layout)
+        layout.addWidget(grp_precios)
+
+        # Inicializar estado visual
+        self.toggle_importacion(False)
+
+    # ==========================================================================
+    # LÓGICA DE NEGOCIO Y CÁLCULOS (FRONTEND)
+    # ==========================================================================
+    
+    def crear_spin_moneda(self):
+        spin = QDoubleSpinBox()
+        spin.setRange(0, 9999999.99)
+        spin.setDecimals(2)
+        spin.setPrefix("$ ")
+        return spin
+
+    def seleccionar_imagen(self):
+        archivo, _ = QFileDialog.getOpenFileName(self, "Seleccionar Imagen", "", "Imágenes (*.png *.jpg *.jpeg)")
+        if archivo:
+            self.ruta_imagen_actual = archivo
+            pixmap = QPixmap(archivo)
+            self.lbl_imagen.setPixmap(pixmap)
+
+    def calcular_volumen(self):
+        alto = self.spin_alto.value()
+        ancho = self.spin_ancho.value()
+        prof = self.spin_prof.value()
+        
+        # Formula: cm3 / 1.000.000 = m3
+        volumen = (alto * ancho * prof) / 1000000
+        self.lbl_volumen_m3.setText(f"{volumen:.4f} m³")
+
+    def toggle_importacion(self, checked):
+        # Habilitar o deshabilitar campos de importación
+        self.spin_fob.setEnabled(checked)
+        self.spin_flete.setEnabled(checked)
+        self.spin_seguro.setEnabled(checked)
+        self.spin_arancel.setEnabled(checked)
+        
+        if not checked:
+            # Si no es importado, el Costo Final es editable directamente
+            self.spin_costo_final.setReadOnly(False)
+            self.spin_costo_final.setStyleSheet("font-size: 16px; font-weight: bold; background-color: white;")
+        else:
+            # Si es importado, el Costo Final es calculado (Read Only)
+            self.spin_costo_final.setReadOnly(True)
+            self.spin_costo_final.setStyleSheet("font-size: 16px; font-weight: bold; background-color: #e8f8f5;")
+            self.recalcular_costos_importacion()
+
+    def recalcular_costos_importacion(self):
+        if self.chk_importado.isChecked():
+            total = (self.spin_fob.value() + 
+                     self.spin_flete.value() + 
+                     self.spin_seguro.value() + 
+                     self.spin_arancel.value())
+            self.spin_costo_final.blockSignals(True) # Evitar bucle infinito
+            self.spin_costo_final.setValue(total)
+            self.spin_costo_final.blockSignals(False)
+            self.recalcular_tabla_precios()
+
+    def init_tabla_precios(self):
+        tarifas = ["Precio A (Detal)", "Precio B (Mayorista)", "Precio C (Gran Mayorista)"]
+        márgenes_default = [30.00, 20.00, 15.00] # %
+        
+        self.grid_precios.setRowCount(len(tarifas))
+        
+        for i, nombre in enumerate(tarifas):
+            # Col 0: Nombre Tarifa (No editable)
+            item_nom = QTableWidgetItem(nombre)
+            item_nom.setFlags(item_nom.flags() ^ Qt.ItemFlag.ItemIsEditable)
+            self.grid_precios.setItem(i, 0, item_nom)
             
-            if data:
-                self.id_producto_seleccionado = data[0]
-                self.txt_codigo.setText(data[0])
-                self.txt_codigo.setReadOnly(True)
-                self.txt_nombre.setText(data[1])
-                self.txt_desc.setText(data[2])
-                self.cmb_origen.setCurrentText(data[3])
-                self.cmb_unidad.setCurrentText(data[4])
-                self.txt_almacen.setText(data[5])
-                self.txt_pasillo.setText(data[6])
-                self.txt_estante.setText(data[7])
-                self.txt_peldano.setText(data[8])
-                self.spin_cantidad.setValue(float(data[9] or 0))
-                self.spin_pendiente.setValue(float(data[10] or 0))
-                self.spin_devuelto.setValue(float(data[11] or 0))
-                self.txt_doc_dev.setText(data[12])
-                if data[13]: self.date_elab.setDate(data[13])
-                if data[14]: self.date_venc.setDate(data[14])
-                self.spin_costo.setValue(float(data[15] or 0))
-                self.spin_porc_desc.setValue(float(data[16] or 0))
-                self.spin_iva_porc.setValue(float(data[17] or 16))
-                
-                # Proveedor
-                idx = self.cmb_proveedor.findData(data[18])
-                if idx >= 0: self.cmb_proveedor.setCurrentIndex(idx)
-                
-                self.txt_cuenta_cxp.setText(data[19])
-                self.txt_tipo_costo.setText(data[20])
-                self.chk_activo.setChecked(data[21])
-                self.txt_comentario.setText(data[22])
-                
-                # Audit
-                self.lbl_audit_crea.setText(f"Crea: {data[23]} ({str(data[24])[:10]})")
-                self.lbl_audit_mod.setText(f"Mod: {data[25] or '-'} ({str(data[26])[:10]})")
-                
-                self.calcular_montos()
-            else:
-                QMessageBox.information(self, "Info", "Producto no encontrado.")
+            # Col 1: Margen (Editable)
+            self.grid_precios.setItem(i, 1, QTableWidgetItem(f"{márgenes_default[i]:.2f}"))
+            
+            # Resto de columnas se calculan solas...
+            for j in range(2, 6):
+                item = QTableWidgetItem("0.00")
+                item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable) # ReadOnly
+                self.grid_precios.setItem(i, j, item)
 
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+    def on_grid_precios_changed(self, row, col):
+        # Solo reaccionamos si cambia la columna de Margen (Col 1)
+        if col == 1:
+            self.recalcular_fila_precio(row)
 
-    def limpiar_formulario(self):
-        self.id_producto_seleccionado = None
-        self.txt_codigo.setReadOnly(False)
-        self.txt_codigo.clear()
-        self.txt_nombre.clear()
-        self.txt_desc.clear()
-        self.spin_costo.setValue(0)
-        self.lbl_audit_crea.setText("Crea: -")
-        self.lbl_audit_mod.setText("Mod: -")
-        self.txt_buscar.clear()
+    def recalcular_tabla_precios(self):
+        # Actualizar ref en Bs
+        costo_usd = self.spin_costo_final.value()
+        self.lbl_costo_bs.setText(f"{costo_usd * self.tasa_cambio_actual:,.2f} Bs")
+        
+        # Recorrer toda la tabla
+        self.grid_precios.blockSignals(True) # Pausar señales para performance
+        for i in range(self.grid_precios.rowCount()):
+            self.recalcular_fila_precio(i, signal_block=False)
+        self.grid_precios.blockSignals(False)
+
+    def recalcular_fila_precio(self, row, signal_block=True):
+        try:
+            costo = self.spin_costo_final.value()
+            
+            # Leer Margen
+            margen_txt = self.grid_precios.item(row, 1).text()
+            margen = float(margen_txt) if margen_txt else 0.0
+            
+            # Lógica de Precio: Costo + (Costo * %)
+            # OJO: Si la empresa usa "Margen sobre Venta", la fórmula es: Costo / (1 - %/100)
+            # Usaremos la simple (Sobre Costo) por defecto:
+            precio_neto = costo * (1 + margen / 100)
+            
+            # Impuesto (Simulado 16%)
+            # TO-DO: Leer del combo de impuesto seleccionado
+            iva_porc = 16.0 
+            monto_iva = precio_neto * (iva_porc / 100)
+            precio_final_usd = precio_neto + monto_iva
+            precio_final_bs = precio_final_usd * self.tasa_cambio_actual
+            
+            # Escribir en columnas (Neto, IVA, Final USD, Final BS)
+            self.grid_precios.setItem(row, 2, QTableWidgetItem(f"{precio_neto:.2f}"))
+            self.grid_precios.setItem(row, 3, QTableWidgetItem(f"{monto_iva:.2f}"))
+            self.grid_precios.setItem(row, 4, QTableWidgetItem(f"{precio_final_usd:.2f}"))
+            self.grid_precios.setItem(row, 5, QTableWidgetItem(f"{precio_final_bs:,.2f}"))
+            
+        except ValueError:
+            pass # Si escriben letras en el margen
+
+    def cargar_combos_simulados(self):
+        # Aquí llamarías a tu DBManager
+        self.cmb_marca.addItems(["Seleccione...", "Samsung", "Nestlé", "Polar", "Generico"])
+        self.cmb_grupo.addItems(["Seleccione...", "Alimentos", "Limpieza", "Tecnología"])
+        self.cmb_unidad.addItems(["UND - Unidad", "CJA - Caja", "BTO - Bulto"])
+        self.cmb_impuesto.addItems(["IVA General 16%", "Reducido 8%", "Exento 0%"])
 
     def guardar_producto(self):
-        cod = self.txt_codigo.text().strip().upper()
-        nom = self.txt_nombre.text().strip().upper()
+        # Aquí recolectas todos los datos
+        data = {
+            "sku": self.txt_sku.text(),
+            "nombre": self.txt_nombre.text(),
+            "costo_usd": self.spin_costo_final.value(),
+            "es_importado": self.chk_importado.isChecked(),
+            # ... obtener el resto de campos ...
+        }
+        print("Guardando producto...", data)
+        # 1. INSERT/UPDATE en inv_productos
+        # 2. Loop para INSERT/UPDATE en inv_precios (recorriendo la tabla)
+        # 3. INSERT/UPDATE en inv_existencias (ubicaciones)
         
-        if not cod or not nom:
-            QMessageBox.warning(self, "Datos", "Código y Nombre son obligatorios.")
-            return
+        self.close()
 
-        # Calcular valores derivados antes de guardar
-        costo = self.spin_costo.value()
-        monto_desc = self.spin_monto_desc.value()
-        neto = self.spin_neto.value()
-        monto_iva = self.spin_monto_iva.value()
-        prov_id = self.cmb_proveedor.currentData()
-
-        try:
-            conn = psycopg2.connect(**DB_PARAMS)
-            cur = conn.cursor()
-            
-            if self.id_producto_seleccionado is None:
-                # INSERT
-                query = """
-                    INSERT INTO maestro_productos (
-                        cod_compania, cod_producto, nombre_producto, descripcion, origen, unidad,
-                        almacen, pasillo, estante, peldano,
-                        cantidad, pendiente, devuelto, documento_dev, fecha_elaboracion, fecha_vencimiento,
-                        costo_unitario, porc_descuento, monto_descuento, iva_porc, monto_iva, neto,
-                        tipo_costo, id_proveedor, cuenta_por_pagar,
-                        comentario, estatus, id_user_crea
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """
-                params = (
-                    self.cod_compania, cod, nom, self.txt_desc.toPlainText(), self.cmb_origen.currentText(), self.cmb_unidad.currentText(),
-                    self.txt_almacen.text(), self.txt_pasillo.text(), self.txt_estante.text(), self.txt_peldano.text(),
-                    self.spin_cantidad.value(), self.spin_pendiente.value(), self.spin_devuelto.value(), self.txt_doc_dev.text(), 
-                    self.date_elab.date().toString(Qt.DateFormat.ISODate), self.date_venc.date().toString(Qt.DateFormat.ISODate),
-                    costo, self.spin_porc_desc.value(), monto_desc, self.spin_iva_porc.value(), monto_iva, neto,
-                    self.txt_tipo_costo.text(), prov_id, self.txt_cuenta_cxp.text(),
-                    self.txt_comentario.toPlainText(), self.chk_activo.isChecked(), self.id_usuario
-                )
-            else:
-                # UPDATE
-                query = """
-                    UPDATE maestro_productos SET
-                        nombre_producto=%s, descripcion=%s, origen=%s, unidad=%s,
-                        almacen=%s, pasillo=%s, estante=%s, peldano=%s,
-                        cantidad=%s, pendiente=%s, devuelto=%s, documento_dev=%s, fecha_elaboracion=%s, fecha_vencimiento=%s,
-                        costo_unitario=%s, porc_descuento=%s, monto_descuento=%s, iva_porc=%s, monto_iva=%s, neto=%s,
-                        tipo_costo=%s, id_proveedor=%s, cuenta_por_pagar=%s,
-                        comentario=%s, estatus=%s, id_user_mod=%s
-                    WHERE cod_compania=%s AND cod_producto=%s
-                """
-                params = (
-                    nom, self.txt_desc.toPlainText(), self.cmb_origen.currentText(), self.cmb_unidad.currentText(),
-                    self.txt_almacen.text(), self.txt_pasillo.text(), self.txt_estante.text(), self.txt_peldano.text(),
-                    self.spin_cantidad.value(), self.spin_pendiente.value(), self.spin_devuelto.value(), self.txt_doc_dev.text(),
-                    self.date_elab.date().toString(Qt.DateFormat.ISODate), self.date_venc.date().toString(Qt.DateFormat.ISODate),
-                    costo, self.spin_porc_desc.value(), monto_desc, self.spin_iva_porc.value(), monto_iva, neto,
-                    self.txt_tipo_costo.text(), prov_id, self.txt_cuenta_cxp.text(),
-                    self.txt_comentario.toPlainText(), self.chk_activo.isChecked(), self.id_usuario,
-                    self.cod_compania, self.id_producto_seleccionado
-                )
-
-            cur.execute(query, params)
-            conn.commit()
-            conn.close()
-            QMessageBox.information(self, "Éxito", "Producto guardado correctamente.")
-            self.limpiar_formulario()
-            
-        except psycopg2.Error as e:
-            QMessageBox.critical(self, "Error SQL", f"{e.pgerror}")
-
-    def eliminar_producto(self):
-        if self.rol_usuario != "Administrador": return
-        if not self.id_producto_seleccionado: return
-        
-        if QMessageBox.question(self, "Confirmar", "¿Eliminar producto?") == QMessageBox.StandardButton.Yes:
-            try:
-                conn = psycopg2.connect(**DB_PARAMS)
-                cur = conn.cursor()
-                cur.execute("DELETE FROM maestro_productos WHERE cod_compania=%s AND cod_producto=%s", (self.cod_compania, self.id_producto_seleccionado))
-                conn.commit()
-                conn.close()
-                self.limpiar_formulario()
-            except Exception as e:
-                QMessageBox.critical(self, "Error", str(e))
-
+# Para pruebas independientes
 if __name__ == "__main__":
+    from PyQt6.QtWidgets import QApplication
     app = QApplication(sys.argv)
-    win = ProductosForm(1, 1, "EMPRESA TEST")
-    win.show()
+    # Estilo Fusion para que se vea moderno
+    app.setStyle("Fusion")
+    ventana = ProductosForm(1, 1, "EMPRESA DEMO")
+    ventana.show()
     sys.exit(app.exec())

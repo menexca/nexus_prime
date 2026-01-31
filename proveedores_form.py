@@ -218,7 +218,7 @@ class ProveedorForm(QWidget):
             
             # 2. Query de Inserción (Usando el COD_COMPANIA de la sesión)
             query = """
-                INSERT INTO maestro_proveedores (
+                INSERT INTO com_proveedores (
                     cod_compania, cod_proveedor, rif, nit, nombre_provider, 
                     direccion, zona, contacto1, telefono1, email1,
                     tipo_persona, cod_retencion, sujeto_ret_iva, tipo_contrib, contribuyente_iva,

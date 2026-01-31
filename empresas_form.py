@@ -225,7 +225,7 @@ class EmpresasForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            cur.execute("SELECT cod_compania, razon_social, rif FROM maestro_empresas ORDER BY cod_compania")
+            cur.execute("SELECT cod_compania, razon_social, rif FROM cfg_empresas ORDER BY cod_compania")
             empresas = cur.fetchall()
             conn.close()
             for emp in empresas:
@@ -249,7 +249,7 @@ class EmpresasForm(QWidget):
                        e.cod_contribuyente, e.porcentaje_patente,
                        u1.usuario_login as user_crea, e.fecha_registro,
                        u2.usuario_login as user_mod, e.fecha_modifica
-                FROM maestro_empresas e
+                FROM cfg_empresas e
                 LEFT JOIN usuarios_sistema u1 ON e.id_user_crea = u1.id_usuario
                 LEFT JOIN usuarios_sistema u2 ON e.id_user_mod = u2.id_usuario
                 WHERE e.cod_compania = %s
@@ -316,7 +316,7 @@ class EmpresasForm(QWidget):
             
             if self.id_empresa_seleccionada is None:
                 query = """
-                    INSERT INTO maestro_empresas (
+                    INSERT INTO cfg_empresas (
                         razon_social, rif, nit, telefono1, telefono2, estatus,
                         pais, estado, ciudad, municipio, zona_postal, direccion,
                         tipo_contribuyente, tipo_contrib_iva, persona_fiscal, 
@@ -332,7 +332,7 @@ class EmpresasForm(QWidget):
             else:
                 # AQUÍ SE CORRIGIÓ EL ERROR DE PARÉNTESIS
                 query = """
-                    UPDATE maestro_empresas SET
+                    UPDATE cfg_empresas SET
                         razon_social=%s, rif=%s, nit=%s, telefono1=%s, telefono2=%s, estatus=%s,
                         pais=%s, estado=%s, ciudad=%s, municipio=%s, zona_postal=%s, direccion=%s,
                         tipo_contribuyente=%s, tipo_contrib_iva=%s, persona_fiscal=%s, 
@@ -370,7 +370,7 @@ class EmpresasForm(QWidget):
             try:
                 conn = psycopg2.connect(**DB_PARAMS)
                 cur = conn.cursor()
-                cur.execute("DELETE FROM maestro_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
+                cur.execute("DELETE FROM cfg_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
                 conn.commit()
                 conn.close()
                 self.limpiar_formulario()
