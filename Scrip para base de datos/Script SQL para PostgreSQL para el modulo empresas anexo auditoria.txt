@@ -1,0 +1,29 @@
+-- 1. AGREGAR COLUMNAS DE AUDITORÍA A MAESTRO_EMPRESAS
+ALTER TABLE maestro_empresas 
+ADD COLUMN IF NOT EXISTS id_user_crea INT,
+ADD COLUMN IF NOT EXISTS id_user_mod INT,
+ADD COLUMN IF NOT EXISTS fecha_modifica TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- 2. AGREGAR RELACIONES (FOREIGN KEYS)
+-- Esto asegura que solo usuarios válidos queden registrados en la auditoría
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_empresa_user_crea') THEN
+        ALTER TABLE maestro_empresas ADD CONSTRAINT fk_empresa_user_crea FOREIGN KEY (id_user_crea) REFERENCES usuarios_sistema(id_usuario);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_empresa_user_mod') THEN
+        ALTER TABLE maestro_empresas ADD CONSTRAINT fk_empresa_user_mod FOREIGN KEY (id_user_mod) REFERENCES usuarios_sistema(id_usuario);
+    END IF;
+END $$;
+
+-- 3. ACTIVAR TRIGGER DE ACTUALIZACIÓN AUTOMÁTICA DE FECHA
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_empresas') THEN
+        CREATE TRIGGER trg_audit_empresas
+        BEFORE UPDATE ON maestro_empresas
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_actualizar_fecha_mod();
+    END IF;
+END $$;

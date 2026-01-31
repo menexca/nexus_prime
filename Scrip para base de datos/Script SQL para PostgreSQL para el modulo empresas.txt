@@ -1,0 +1,65 @@
+Ejecutar 2.
+
+Script SQL (Ejecutar en nexusdb)
+Este script crea el módulo de empresas y el puente de seguridad para validar qué usuario entra a qué empresa.
+
+-- 1. TABLA MAESTRA: CATÁLOGO CIIU (Clasificación Industrial Internacional Uniforme)
+-- Esto permite estandarizar los códigos de actividad económica.
+CREATE TABLE IF NOT EXISTS fiscal_ciiu (
+    id_ciiu SERIAL PRIMARY KEY,
+    codigo_ciiu VARCHAR(10) UNIQUE NOT NULL, -- Ej: 4711
+    descripcion TEXT NOT NULL,
+    ramo_actividad VARCHAR(100) -- Ej: Comercio al por menor
+);
+
+-- 2. TABLA MAESTRA: EMPRESAS (Tu requerimiento detallado)
+CREATE TABLE IF NOT EXISTS maestro_empresas (
+    cod_compania SERIAL PRIMARY KEY, -- Este ID será el eje de todo el sistema
+    
+    -- Identificación Fiscal
+    razon_social VARCHAR(200) NOT NULL,
+    rif VARCHAR(20) NOT NULL UNIQUE,
+    nit VARCHAR(20),
+    
+    -- Ubicación Geográfica
+    pais VARCHAR(50) DEFAULT 'Venezuela',
+    estado VARCHAR(50),
+    municipio VARCHAR(50),
+    ciudad VARCHAR(50),
+    zona_postal VARCHAR(10),
+    direccion TEXT,
+    
+    -- Datos Tributarios y Fiscales
+    tipo_contribuyente VARCHAR(50), -- Ej: Jurídica, Gubernamental
+    tipo_contrib_iva VARCHAR(50),   -- Ej: Ordinario, Especial
+    persona_fiscal VARCHAR(100),    -- Representante Legal
+    cod_contribuyente VARCHAR(50),  -- Código interno ante alcaldía/ente
+    porcentaje_patente NUMERIC(5,2), -- Ej: 2.50
+    
+    -- Relación con CIIU
+    id_ciiu_principal INT, 
+    
+    -- Contacto
+    telefono1 VARCHAR(20),
+    telefono2 VARCHAR(20),
+    telefono3 VARCHAR(20),
+    
+    -- Auditoría
+    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    estatus BOOLEAN DEFAULT TRUE,
+
+    CONSTRAINT fk_ciiu FOREIGN KEY (id_ciiu_principal) REFERENCES fiscal_ciiu(id_ciiu)
+);
+
+-- 3. TABLA DE SEGURIDAD: ACCESO USUARIO-EMPRESA
+-- Esta tabla define: "El usuario Juan PUEDE entrar a la Empresa 1, pero NO a la Empresa 2"
+CREATE TABLE IF NOT EXISTS acceso_usuarios_empresas (
+    id_acceso SERIAL PRIMARY KEY,
+    id_usuario INT NOT NULL,
+    cod_compania INT NOT NULL,
+    permiso_escritura BOOLEAN DEFAULT TRUE, -- Puede ser solo lectura
+    
+    CONSTRAINT fk_usuario_acc FOREIGN KEY (id_usuario) REFERENCES usuarios_sistema(id_usuario),
+    CONSTRAINT fk_empresa_acc FOREIGN KEY (cod_compania) REFERENCES maestro_empresas(cod_compania),
+    CONSTRAINT uk_usuario_empresa UNIQUE (id_usuario, cod_compania) -- Evita duplicados
+);

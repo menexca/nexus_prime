@@ -1,0 +1,70 @@
+-- TABLA MAESTRA DE PRODUCTOS (Adaptada a tus requerimientos específicos)
+CREATE TABLE IF NOT EXISTS maestro_productos (
+    -- Identificadores y Multi-Empresa
+    cod_compania INT NOT NULL,
+    num_item SERIAL,                -- Numero de items (Interno)
+    cod_producto VARCHAR(25) NOT NULL,
+    
+    -- Datos Básicos
+    nombre_producto VARCHAR(200) NOT NULL,
+    descripcion TEXT,
+    origen VARCHAR(20) DEFAULT 'NACIONAL', -- Importado / Nacional
+    unidad VARCHAR(20) DEFAULT 'UNIDAD',   -- Kilos, Bulto, Unidad
+    
+    -- Ubicación y Almacenamiento
+    almacen VARCHAR(50),
+    pasillo VARCHAR(20),
+    estante VARCHAR(20),
+    peldano VARCHAR(20),
+    
+    -- Inventario y Fechas (Lote Actual)
+    cantidad NUMERIC(12,3) DEFAULT 0,
+    pendiente NUMERIC(12,3) DEFAULT 0, -- Artículos recibidos pendientes
+    devuelto NUMERIC(12,3) DEFAULT 0,  -- Artículos devueltos
+    documento_dev VARCHAR(50),         -- Nro Documento devolución
+    fecha_elaboracion DATE,
+    fecha_vencimiento DATE,
+    
+    -- Estructura de Costos y Precios
+    costo_unitario NUMERIC(16,2) DEFAULT 0,
+    porc_descuento NUMERIC(5,2) DEFAULT 0,
+    monto_descuento NUMERIC(16,2) DEFAULT 0,
+    
+    iva_porc NUMERIC(5,2) DEFAULT 16.00,
+    monto_iva NUMERIC(16,2) DEFAULT 0,
+    neto NUMERIC(16,2) DEFAULT 0,      -- Calculo sin IVA
+    
+    -- Contabilidad y Proveedor
+    tipo_costo VARCHAR(50),            -- Ej: Promedio, Reposición
+    id_proveedor VARCHAR(20),          -- Relación con Maestro Proveedores
+    cuenta_por_pagar VARCHAR(25),      -- Cuenta Contable
+    
+    -- Auditoría y Control
+    comentario TEXT,
+    estatus BOOLEAN DEFAULT TRUE,
+    id_user_crea INT,
+    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id_user_mod INT,
+    fecha_modifica TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Restricciones
+    PRIMARY KEY (cod_compania, cod_producto),
+    CONSTRAINT fk_prod_user_crea FOREIGN KEY (id_user_crea) REFERENCES usuarios_sistema(id_usuario),
+    CONSTRAINT fk_prod_user_mod FOREIGN KEY (id_user_mod) REFERENCES usuarios_sistema(id_usuario)
+    -- Nota: No forzamos FK de proveedor aquí para permitir flexibilidad si el proveedor se borra, 
+    -- pero lo validaremos en Python.
+);
+
+-- ÍNDICES
+CREATE INDEX IF NOT EXISTS idx_prod_nombre ON maestro_productos (cod_compania, nombre_producto);
+
+-- TRIGGER DE AUDITORÍA
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_productos') THEN
+        CREATE TRIGGER trg_audit_productos
+        BEFORE UPDATE ON maestro_productos
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_actualizar_fecha_mod();
+    END IF;
+END $$;

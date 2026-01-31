@@ -1,0 +1,30 @@
+-- 1. AGREGAR COLUMNAS FALTANTES A USUARIOS_SISTEMA
+ALTER TABLE usuarios_sistema 
+ADD COLUMN IF NOT EXISTS rol VARCHAR(20) DEFAULT 'Operador', -- Admin, Supervisor, Operador
+ADD COLUMN IF NOT EXISTS id_user_crea INT,
+ADD COLUMN IF NOT EXISTS id_user_mod INT,
+ADD COLUMN IF NOT EXISTS fecha_modifica TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- 2. RELACIONES DE AUDITORÍA (Self-Referencing)
+-- Un usuario es creado por otro usuario.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_usr_crea') THEN
+        ALTER TABLE usuarios_sistema ADD CONSTRAINT fk_usr_crea FOREIGN KEY (id_user_crea) REFERENCES usuarios_sistema(id_usuario);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_usr_mod') THEN
+        ALTER TABLE usuarios_sistema ADD CONSTRAINT fk_usr_mod FOREIGN KEY (id_user_mod) REFERENCES usuarios_sistema(id_usuario);
+    END IF;
+END $$;
+
+-- 3. TRIGGER DE FECHA
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_audit_usuarios') THEN
+        CREATE TRIGGER trg_audit_usuarios
+        BEFORE UPDATE ON usuarios_sistema
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_actualizar_fecha_mod();
+    END IF;
+END $$;
