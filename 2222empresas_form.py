@@ -1,11 +1,10 @@
 import sys
 import psycopg2
-import re  # Para validación de RIF
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QCheckBox, QComboBox, QTextEdit, QTabWidget, QFormLayout, 
     QMessageBox, QListWidget, QDoubleSpinBox, QGroupBox, QApplication, QFrame,
-    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator
+    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator # <--- CAMBIO CLAVE
 )
 from PyQt6.QtGui import QFont, QPalette, QColor
 from PyQt6.QtCore import Qt
@@ -32,7 +31,6 @@ class EmpresasForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # CORRECCIÓN: seg_usuarios
             query = "SELECT rol FROM seg_usuarios WHERE id_usuario = %s"
             cur.execute(query, (self.id_usuario_actual,))
             res = cur.fetchone()
@@ -122,12 +120,9 @@ class EmpresasForm(QWidget):
         form_ident = QFormLayout()
         self.txt_razon_social = QLineEdit()
         form_ident.addRow("Razón Social *:", self.txt_razon_social)
-        
         self.txt_rif = QLineEdit()
         self.txt_rif.setPlaceholderText("J-12345678-0")
-        self.txt_rif.setToolTip("Formato: Letra-Números-Dígito (Ej: J-12345678-0)")
         form_ident.addRow("RIF *:", self.txt_rif)
-        
         self.txt_nit = QLineEdit()
         form_ident.addRow("NIT:", self.txt_nit)
         self.txt_telefono1 = QLineEdit()
@@ -182,13 +177,14 @@ class EmpresasForm(QWidget):
 
         self.tabs.addTab(tab_fiscal, "Datos Fiscales")
         
-        # --- TAB 3: SEGURIDAD ---
+        # --- TAB 3: SEGURIDAD (SOLUCIÓN TREEWIDGET ROBUSTO) ---
         tab_seguridad = QWidget()
         layout_seg = QVBoxLayout(tab_seguridad)
         layout_seg.addWidget(QLabel("Seleccione los usuarios que tendrán acceso a esta empresa:"))
         
+        # Usamos QTreeWidget en lugar de ListWidget para usar la misma técnica que en Usuarios
         self.arbol_usuarios = QTreeWidget()
-        self.arbol_usuarios.setHeaderHidden(True) 
+        self.arbol_usuarios.setHeaderHidden(True) # Ocultamos cabecera para que parezca lista
         self.arbol_usuarios.setColumnCount(1)
         layout_seg.addWidget(self.arbol_usuarios)
         
@@ -257,6 +253,7 @@ class EmpresasForm(QWidget):
     # --- LÓGICA ---
 
     def create_checkbox_widget(self, text):
+        """Crea un widget contenedor con QCheckBox (Mismo método que UsuariosForm)"""
         widget = QWidget()
         chk = QCheckBox(text)
         layout = QHBoxLayout(widget)
@@ -266,21 +263,25 @@ class EmpresasForm(QWidget):
         return widget, chk
 
     def cargar_catalogo_usuarios(self):
+        """Carga usuarios usando QTreeWidget + setItemWidget para estabilidad total"""
         self.arbol_usuarios.clear()
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # CORRECCIÓN: seg_usuarios
             cur.execute("SELECT id_usuario, usuario_login, nombre_completo FROM seg_usuarios WHERE estatus = TRUE ORDER BY usuario_login")
             usuarios = cur.fetchall()
             conn.close()
             
             for u in usuarios:
+                # 1. Crear Item de Árbol
                 item = QTreeWidgetItem()
-                item.setData(0, Qt.ItemDataRole.UserRole, u[0])
+                item.setData(0, Qt.ItemDataRole.UserRole, u[0]) # ID en columna 0
                 self.arbol_usuarios.addTopLevelItem(item)
                 
+                # 2. Crear Widget Real con Checkbox
                 container, chk = self.create_checkbox_widget(f"{u[1]} - {u[2]}")
+                
+                # 3. Incrustar en la celda
                 self.arbol_usuarios.setItemWidget(item, 0, container)
                 
         except Exception as e:
@@ -305,10 +306,10 @@ class EmpresasForm(QWidget):
         self.id_empresa_seleccionada = id_empresa
         self.lbl_titulo_form.setText(f"Editando Empresa ID: {id_empresa}")
         
+        # 1. Cargar Datos Generales
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # CORRECCIÓN: Joins a seg_usuarios
             query = """
                 SELECT e.razon_social, e.rif, e.nit, e.telefono1, e.telefono2, e.estatus,
                        e.pais, e.estado, e.ciudad, e.municipio, e.zona_postal, e.direccion,
@@ -348,17 +349,19 @@ class EmpresasForm(QWidget):
                 self.lbl_modif_por.setText(f"Modif. por: {data[19] or '-'}")
                 self.lbl_fecha_mod.setText(f"Fecha: {str(data[20])[:16]}")
 
-            # Cargar Acceso de Usuarios
-            self.marcar_usuarios(False) 
+            # 2. Cargar Acceso de Usuarios (Seguridad)
+            self.marcar_usuarios(False) # Limpiar
 
             cur.execute("SELECT id_usuario FROM sys_acceso_empresas WHERE cod_compania = %s", (id_empresa,))
             usuarios_acceso = [row[0] for row in cur.fetchall()]
             
+            # Recorrer árbol para marcar
             iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
             while iterator.value():
                 item_tree = iterator.value()
                 uid = item_tree.data(0, Qt.ItemDataRole.UserRole)
                 
+                # Obtener el widget incrustado
                 container = self.arbol_usuarios.itemWidget(item_tree, 0)
                 if container and uid in usuarios_acceso:
                     chk = container.findChild(QCheckBox)
@@ -372,6 +375,7 @@ class EmpresasForm(QWidget):
             QMessageBox.critical(self, "Error", str(e))
 
     def marcar_usuarios(self, marcar):
+        """Marca o desmarca los QCheckBox reales"""
         iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
         while iterator.value():
             item = iterator.value()
@@ -394,12 +398,6 @@ class EmpresasForm(QWidget):
         self.lbl_modif_por.setText("-"); self.lbl_fecha_mod.setText("-")
         self.marcar_usuarios(False)
 
-    def validar_rif(self, rif):
-        # Valida formatos tipo: J-12345678-0, V-12345678, G-12345678-9
-        # Acepta J, V, E, G, P, C (mayúsculas)
-        pattern = r"^[JVEGPC]-\d{5,9}(-\d)?$"
-        return re.match(pattern, rif) is not None
-
     def guardar_empresa(self):
         if self.rol_usuario != "Administrador":
             QMessageBox.warning(self, "Acceso Denegado", "Permisos insuficientes.")
@@ -407,20 +405,15 @@ class EmpresasForm(QWidget):
 
         razon = self.txt_razon_social.text().strip()
         rif = self.txt_rif.text().strip().upper()
-        
-        # VALIDACIONES NUEVAS
         if not razon or not rif:
-            QMessageBox.warning(self, "Datos", "Razón Social y RIF son campos obligatorios.")
-            return
-            
-        if not self.validar_rif(rif):
-            QMessageBox.warning(self, "Formato RIF", "El RIF no es válido.\nEjemplo correcto: J-12345678-0")
+            QMessageBox.warning(self, "Datos", "Razón Social y RIF requeridos.")
             return
 
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
             
+            # 1. Guardar/Actualizar Empresa
             if self.id_empresa_seleccionada is None:
                 query = """
                     INSERT INTO cfg_empresas (
@@ -455,8 +448,10 @@ class EmpresasForm(QWidget):
                 )
                 cur.execute(query, params)
 
+            # 2. Guardar Acceso de Usuarios
             cur.execute("DELETE FROM sys_acceso_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
             
+            # Recorrer el ÁRBOL para guardar
             iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
             while iterator.value():
                 item = iterator.value()

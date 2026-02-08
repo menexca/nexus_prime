@@ -1,7 +1,8 @@
 # db_config.py
 DB_PARAMS = {
-    "host": "localhost",
+    "host": "yamabiko.proxy.rlwy.net",      #"localhost",
     "database": "nexusdb",
     "user": "postgres",
-    "password": "123Mm456*" # <--- COLOCA TU CLAVE REAL
+    "password": "RVqQPStZvRZMILqStuhXXWRQSWumZNzX", # <--- COLOCA TU CLAVE REAL
+    "port": "21666"
 }

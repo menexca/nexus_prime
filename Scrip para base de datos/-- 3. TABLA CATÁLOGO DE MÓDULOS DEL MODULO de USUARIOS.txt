@@ -1,0 +1,30 @@
+-- 1. TABLA CATÁLOGO DE MÓDULOS DEL SISTEMA
+CREATE TABLE IF NOT EXISTS sys_moduser (
+    id_modulo SERIAL PRIMARY KEY,
+    nombre_modulo VARCHAR(50) NOT NULL,
+    categoria VARCHAR(50) -- Ej: 'Inventario', 'Seguridad', 'Configuración'
+);
+
+-- 2. TABLA DE PERMISOS (Relación Usuario <-> Módulo)
+CREATE TABLE IF NOT EXISTS sys_permisouser (
+    id_permiso SERIAL PRIMARY KEY,
+    id_usuario INT NOT NULL,
+    id_modulo INT NOT NULL,
+    p_ver BOOLEAN DEFAULT FALSE,
+    p_crear BOOLEAN DEFAULT FALSE,
+    p_editar BOOLEAN DEFAULT FALSE,
+    p_eliminar BOOLEAN DEFAULT FALSE,
+    
+    CONSTRAINT fk_perm_usr FOREIGN KEY (id_usuario) REFERENCES usuarios_sistema(id_usuario) ON DELETE CASCADE,
+    CONSTRAINT fk_perm_mod FOREIGN KEY (id_modulo) REFERENCES sys_moduser(id_modulo),
+    CONSTRAINT uk_usuario_modulo UNIQUE (id_usuario, id_modulo) -- Un usuario no puede tener duplicado el mismo módulo
+);
+
+-- 3. POBLAR LOS MÓDULOS QUE YA TENEMOS (Seed Data)
+-- Si ya existen, no los duplica.
+INSERT INTO sys_moduser (nombre_modulo, categoria) VALUES 
+('Productos / Inventario', 'Inventario'),
+('Proveedores', 'Compras'),
+('Empresas', 'Configuración'),
+('Usuarios', 'Seguridad')
+ON CONFLICT DO NOTHING;

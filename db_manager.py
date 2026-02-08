@@ -31,6 +31,6 @@ class ConexionDB:
 # --- 2. SEGUNDO: CREAMOS LA INSTANCIA (VARIABLE GLOBAL) ---
 # Esto DEBE ir después de la clase, nunca antes.
 try:
-    db_pool = ConexionDB("localhost", "nexusdb", "postgres", "123Mm456*", 2, 15)
+    db_pool = ConexionDB("localddddhost", "nexusdb", "postgres", "123Mm456*", 2, 15)
 except Exception as e:
     print(f"Error al iniciar la instancia de base de datos: {e}")

@@ -1,11 +1,9 @@
 import sys
 import psycopg2
-import re  # Para validación de RIF
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QCheckBox, QComboBox, QTextEdit, QTabWidget, QFormLayout, 
-    QMessageBox, QListWidget, QDoubleSpinBox, QGroupBox, QApplication, QFrame,
-    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator
+    QMessageBox, QListWidget, QDoubleSpinBox, QGroupBox, QApplication, QFrame
 )
 from PyQt6.QtGui import QFont, QPalette, QColor
 from PyQt6.QtCore import Qt
@@ -26,14 +24,12 @@ class EmpresasForm(QWidget):
         self.apply_styles()
         self.init_ui()
         self.cargar_lista_empresas()
-        self.cargar_catalogo_usuarios() 
 
     def verificar_permisos_usuario(self):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # CORRECCIÓN: seg_usuarios
-            query = "SELECT rol FROM seg_usuarios WHERE id_usuario = %s"
+            query = "SELECT rol FROM usuarios_sistema WHERE id_usuario = %s"
             cur.execute(query, (self.id_usuario_actual,))
             res = cur.fetchone()
             conn.close()
@@ -66,14 +62,12 @@ class EmpresasForm(QWidget):
             QLineEdit:focus { border: 1px solid #007BFF; }
             QLineEdit:read-only { background-color: #E0E0E0; color: #555; }
             
-            QListWidget, QTreeWidget {
+            QListWidget {
                 border: 1px solid #cccccc; background-color: white; border-radius: 4px;
                 font-size: 11pt;
             }
-            QListWidget::item, QTreeWidget::item { padding: 5px; }
-            QListWidget::item:selected, QTreeWidget::item:selected { 
-                background-color: #E6F3FF; color: #0056b3; border-left: 4px solid #007BFF; 
-            }
+            QListWidget::item { padding: 10px; }
+            QListWidget::item:selected { background-color: #E6F3FF; color: #0056b3; border-left: 4px solid #007BFF; }
         """)
 
     def init_ui(self):
@@ -115,19 +109,16 @@ class EmpresasForm(QWidget):
         # Tabs
         self.tabs = QTabWidget()
 
-        # TAB 1: DATOS GENERALES
+        # TAB 1
         tab_general = QWidget()
         layout_gen = QHBoxLayout(tab_general)
         
         form_ident = QFormLayout()
         self.txt_razon_social = QLineEdit()
         form_ident.addRow("Razón Social *:", self.txt_razon_social)
-        
         self.txt_rif = QLineEdit()
         self.txt_rif.setPlaceholderText("J-12345678-0")
-        self.txt_rif.setToolTip("Formato: Letra-Números-Dígito (Ej: J-12345678-0)")
         form_ident.addRow("RIF *:", self.txt_rif)
-        
         self.txt_nit = QLineEdit()
         form_ident.addRow("NIT:", self.txt_nit)
         self.txt_telefono1 = QLineEdit()
@@ -157,7 +148,7 @@ class EmpresasForm(QWidget):
         layout_gen.addLayout(form_ubic)
         self.tabs.addTab(tab_general, "Datos Generales")
 
-        # TAB 2: DATOS FISCALES
+        # TAB 2
         tab_fiscal = QWidget()
         form_fiscal = QFormLayout(tab_fiscal)
         self.cmb_tipo_contrib = QComboBox()
@@ -181,33 +172,6 @@ class EmpresasForm(QWidget):
         form_fiscal.addRow("Código CIIU Principal:", self.txt_ciiu)
 
         self.tabs.addTab(tab_fiscal, "Datos Fiscales")
-        
-        # --- TAB 3: SEGURIDAD ---
-        tab_seguridad = QWidget()
-        layout_seg = QVBoxLayout(tab_seguridad)
-        layout_seg.addWidget(QLabel("Seleccione los usuarios que tendrán acceso a esta empresa:"))
-        
-        self.arbol_usuarios = QTreeWidget()
-        self.arbol_usuarios.setHeaderHidden(True) 
-        self.arbol_usuarios.setColumnCount(1)
-        layout_seg.addWidget(self.arbol_usuarios)
-        
-        btn_todos = QPushButton("Marcar Todos")
-        btn_todos.setFixedSize(100, 25)
-        btn_todos.clicked.connect(lambda: self.marcar_usuarios(True))
-        
-        btn_ninguno = QPushButton("Desmarcar")
-        btn_ninguno.setFixedSize(100, 25)
-        btn_ninguno.clicked.connect(lambda: self.marcar_usuarios(False))
-        
-        layout_btns_seg = QHBoxLayout()
-        layout_btns_seg.addWidget(btn_todos)
-        layout_btns_seg.addWidget(btn_ninguno)
-        layout_btns_seg.addStretch()
-        layout_seg.addLayout(layout_btns_seg)
-        
-        self.tabs.addTab(tab_seguridad, "Seguridad / Acceso")
-        
         right_layout.addWidget(self.tabs)
 
         # Auditoría
@@ -228,7 +192,7 @@ class EmpresasForm(QWidget):
         layout_audit.addWidget(self.lbl_fecha_mod)
         right_layout.addWidget(frm_audit)
 
-        # Botones Principales
+        # Botones
         btn_layout = QHBoxLayout()
         self.btn_eliminar = QPushButton("Eliminar")
         self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
@@ -256,36 +220,6 @@ class EmpresasForm(QWidget):
 
     # --- LÓGICA ---
 
-    def create_checkbox_widget(self, text):
-        widget = QWidget()
-        chk = QCheckBox(text)
-        layout = QHBoxLayout(widget)
-        layout.addWidget(chk)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        return widget, chk
-
-    def cargar_catalogo_usuarios(self):
-        self.arbol_usuarios.clear()
-        try:
-            conn = psycopg2.connect(**DB_PARAMS)
-            cur = conn.cursor()
-            # CORRECCIÓN: seg_usuarios
-            cur.execute("SELECT id_usuario, usuario_login, nombre_completo FROM seg_usuarios WHERE estatus = TRUE ORDER BY usuario_login")
-            usuarios = cur.fetchall()
-            conn.close()
-            
-            for u in usuarios:
-                item = QTreeWidgetItem()
-                item.setData(0, Qt.ItemDataRole.UserRole, u[0])
-                self.arbol_usuarios.addTopLevelItem(item)
-                
-                container, chk = self.create_checkbox_widget(f"{u[1]} - {u[2]}")
-                self.arbol_usuarios.setItemWidget(item, 0, container)
-                
-        except Exception as e:
-            print(f"Error cargando usuarios: {e}")
-
     def cargar_lista_empresas(self):
         self.lista_empresas.clear()
         try:
@@ -308,7 +242,6 @@ class EmpresasForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # CORRECCIÓN: Joins a seg_usuarios
             query = """
                 SELECT e.razon_social, e.rif, e.nit, e.telefono1, e.telefono2, e.estatus,
                        e.pais, e.estado, e.ciudad, e.municipio, e.zona_postal, e.direccion,
@@ -317,12 +250,13 @@ class EmpresasForm(QWidget):
                        u1.usuario_login as user_crea, e.fecha_registro,
                        u2.usuario_login as user_mod, e.fecha_modifica
                 FROM cfg_empresas e
-                LEFT JOIN seg_usuarios u1 ON e.id_user_crea = u1.id_usuario
-                LEFT JOIN seg_usuarios u2 ON e.id_user_mod = u2.id_usuario
+                LEFT JOIN usuarios_sistema u1 ON e.id_user_crea = u1.id_usuario
+                LEFT JOIN usuarios_sistema u2 ON e.id_user_mod = u2.id_usuario
                 WHERE e.cod_compania = %s
             """
             cur.execute(query, (id_empresa,))
             data = cur.fetchone()
+            conn.close()
             
             if data:
                 self.txt_razon_social.setText(data[0])
@@ -347,58 +281,23 @@ class EmpresasForm(QWidget):
                 self.lbl_fecha_crea.setText(f"Fecha: {str(data[18])[:16]}")
                 self.lbl_modif_por.setText(f"Modif. por: {data[19] or '-'}")
                 self.lbl_fecha_mod.setText(f"Fecha: {str(data[20])[:16]}")
-
-            # Cargar Acceso de Usuarios
-            self.marcar_usuarios(False) 
-
-            cur.execute("SELECT id_usuario FROM sys_acceso_empresas WHERE cod_compania = %s", (id_empresa,))
-            usuarios_acceso = [row[0] for row in cur.fetchall()]
-            
-            iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
-            while iterator.value():
-                item_tree = iterator.value()
-                uid = item_tree.data(0, Qt.ItemDataRole.UserRole)
-                
-                container = self.arbol_usuarios.itemWidget(item_tree, 0)
-                if container and uid in usuarios_acceso:
-                    chk = container.findChild(QCheckBox)
-                    if chk: chk.setChecked(True)
-                
-                iterator += 1
-
-            conn.close()
-
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
-
-    def marcar_usuarios(self, marcar):
-        iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
-        while iterator.value():
-            item = iterator.value()
-            container = self.arbol_usuarios.itemWidget(item, 0)
-            if container:
-                chk = container.findChild(QCheckBox)
-                if chk: chk.setChecked(marcar)
-            iterator += 1
 
     def limpiar_formulario(self):
         self.id_empresa_seleccionada = None
         self.lbl_titulo_form.setText("Nueva Empresa")
         self.lista_empresas.clearSelection()
-        for widget in self.findChildren(QLineEdit): widget.clear()
+        
+        for widget in self.findChildren(QLineEdit):
+            widget.clear()
+            
         self.txt_direccion.clear()
         self.chk_estatus.setChecked(True)
         self.spin_patente.setValue(0.0)
         self.txt_pais.setText("Venezuela")
-        self.lbl_creado_por.setText("-"); self.lbl_fecha_crea.setText("-")
-        self.lbl_modif_por.setText("-"); self.lbl_fecha_mod.setText("-")
-        self.marcar_usuarios(False)
-
-    def validar_rif(self, rif):
-        # Valida formatos tipo: J-12345678-0, V-12345678, G-12345678-9
-        # Acepta J, V, E, G, P, C (mayúsculas)
-        pattern = r"^[JVEGPC]-\d{5,9}(-\d)?$"
-        return re.match(pattern, rif) is not None
+        self.lbl_creado_por.setText("Creado por: -"); self.lbl_fecha_crea.setText("Fecha: -")
+        self.lbl_modif_por.setText("Modif. por: -"); self.lbl_fecha_mod.setText("Fecha: -")
 
     def guardar_empresa(self):
         if self.rol_usuario != "Administrador":
@@ -407,14 +306,8 @@ class EmpresasForm(QWidget):
 
         razon = self.txt_razon_social.text().strip()
         rif = self.txt_rif.text().strip().upper()
-        
-        # VALIDACIONES NUEVAS
         if not razon or not rif:
-            QMessageBox.warning(self, "Datos", "Razón Social y RIF son campos obligatorios.")
-            return
-            
-        if not self.validar_rif(rif):
-            QMessageBox.warning(self, "Formato RIF", "El RIF no es válido.\nEjemplo correcto: J-12345678-0")
+            QMessageBox.warning(self, "Datos", "Razón Social y RIF requeridos.")
             return
 
         try:
@@ -428,7 +321,7 @@ class EmpresasForm(QWidget):
                         pais, estado, ciudad, municipio, zona_postal, direccion,
                         tipo_contribuyente, tipo_contrib_iva, persona_fiscal, 
                         cod_contribuyente, porcentaje_patente, id_user_crea
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING cod_compania
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 params = (
                     razon, rif, self.txt_nit.text(), self.txt_telefono1.text(), self.txt_telefono2.text(), self.chk_estatus.isChecked(),
@@ -436,9 +329,8 @@ class EmpresasForm(QWidget):
                     self.cmb_tipo_contrib.currentText(), self.cmb_contrib_iva.currentText(), self.txt_persona_fiscal.text(),
                     self.txt_cod_contribuyente.text(), self.spin_patente.value(), self.id_usuario_actual
                 )
-                cur.execute(query, params)
-                self.id_empresa_seleccionada = cur.fetchone()[0]
             else:
+                # AQUÍ SE CORRIGIÓ EL ERROR DE PARÉNTESIS
                 query = """
                     UPDATE cfg_empresas SET
                         razon_social=%s, rif=%s, nit=%s, telefono1=%s, telefono2=%s, estatus=%s,
@@ -451,24 +343,11 @@ class EmpresasForm(QWidget):
                     razon, rif, self.txt_nit.text(), self.txt_telefono1.text(), self.txt_telefono2.text(), self.chk_estatus.isChecked(),
                     self.txt_pais.text(), self.txt_estado.text(), self.txt_ciudad.text(), self.txt_municipio.text(), self.txt_zona_postal.text(), self.txt_direccion.toPlainText(),
                     self.cmb_tipo_contrib.currentText(), self.cmb_contrib_iva.currentText(), self.txt_persona_fiscal.text(),
-                    self.txt_cod_contribuyente.text(), self.spin_patente.value(), self.id_usuario_actual, self.id_empresa_seleccionada
+                    self.txt_cod_contribuyente.text(), self.spin_patente.value(), self.id_usuario_actual, 
+                    self.id_empresa_seleccionada
                 )
-                cur.execute(query, params)
 
-            cur.execute("DELETE FROM sys_acceso_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
-            
-            iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
-            while iterator.value():
-                item = iterator.value()
-                container = self.arbol_usuarios.itemWidget(item, 0)
-                
-                if container:
-                    chk = container.findChild(QCheckBox)
-                    if chk and chk.isChecked():
-                        uid = item.data(0, Qt.ItemDataRole.UserRole)
-                        cur.execute("INSERT INTO sys_acceso_empresas (id_usuario, cod_compania) VALUES (%s, %s)", (uid, self.id_empresa_seleccionada))
-                iterator += 1
-
+            cur.execute(query, params)
             conn.commit()
             conn.close()
             QMessageBox.information(self, "Éxito", "Guardado correctamente.")
@@ -479,7 +358,7 @@ class EmpresasForm(QWidget):
             if "unique" in str(e).lower():
                 QMessageBox.warning(self, "Duplicado", "Ya existe una empresa con ese RIF.")
             else:
-                QMessageBox.critical(self, "Error SQL", f"{e.pgerror}")
+                QMessageBox.critical(self, "Error SQL", str(e))
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 

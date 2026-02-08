@@ -14,70 +14,13 @@ class LoginDialog(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Acceso Nexus ERP")
-        self.setFixedSize(350, 480) # Aumenté un poco el alto para que respire mejor
-        
-        # --- SOLUCIÓN VISUAL COMPLETA ---
-        # Definimos una hoja de estilos global para este diálogo.
-        # Esto fuerza a TODOS los elementos a usar fondo blanco y letras oscuras.
-        self.setStyleSheet("""
-            QDialog {
-                background-color: white;
-            }
-            QLabel {
-                color: #333333;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QLineEdit {
-                background-color: white;
-                color: #333333;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding: 8px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #007BFF;
-            }
-            QComboBox {
-                background-color: white;
-                color: #333333;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding: 8px;
-            }
-            QComboBox:on { /* Cuando se despliega */
-                border-bottom-left-radius: 0px;
-                border-bottom-right-radius: 0px;
-            }
-            /* ESTO ARREGLA LA LISTA DESPLEGABLE */
-            QComboBox QAbstractItemView {
-                background-color: white;
-                color: #333333;
-                selection-background-color: #007BFF;
-                selection-color: white;
-                outline: 0px;
-            }
-            QPushButton { 
-                background-color: #007BFF; 
-                color: white; 
-                padding: 12px; 
-                font-weight: bold; 
-                border-radius: 4px; 
-                border: none; 
-            }
-            QPushButton:hover { 
-                background-color: #0056b3; 
-            }
-            QPushButton:pressed {
-                background-color: #004494;
-            }
-        """)
+        self.setFixedSize(350, 450)
+        self.setStyleSheet("background-color: white;")
         
         self.usuario_id = None
         self.empresa_id = None
         self.nombre_empresa = None
         self.rol_usuario = None 
-        self.nombre_completo = None 
         
         self.init_ui()
         QTimer.singleShot(100, self.cargar_empresas)
@@ -87,24 +30,25 @@ class LoginDialog(QDialog):
         layout.setSpacing(15)
         layout.setContentsMargins(40, 40, 40, 40)
         
-        # Título (sobrescribimos el tamaño de fuente del estilo global solo para este)
-        lbl_titulo = QLabel("Bienvenido")
-        lbl_titulo.setStyleSheet("font-size: 24px; color: #333333;") 
-        layout.addWidget(lbl_titulo)
+        lbl = QLabel("Bienvenido")
+        lbl.setStyleSheet("font-size: 24px; font-weight: bold; color: #333;")
+        layout.addWidget(lbl)
         
         layout.addWidget(QLabel("Empresa:"))
         self.cmb = QComboBox()
-        # El estilo ya está definido en el setStyleSheet del __init__
+        self.cmb.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
         layout.addWidget(self.cmb)
         
         layout.addWidget(QLabel("Usuario:"))
         self.user = QLineEdit()
         self.user.setPlaceholderText("Ej: admin")
+        self.user.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
         layout.addWidget(self.user)
         
         layout.addWidget(QLabel("Contraseña:"))
         self.pwd = QLineEdit()
         self.pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pwd.setStyleSheet("padding: 8px; border: 1px solid #ccc; border-radius: 4px;")
         
         self.user.returnPressed.connect(self.pwd.setFocus) 
         self.pwd.returnPressed.connect(self.validar) 
@@ -114,7 +58,10 @@ class LoginDialog(QDialog):
         btn.setAutoDefault(False) 
         btn.setDefault(False)     
         btn.setCursor(Qt.CursorShape.PointingHandCursor) 
-        # El estilo del botón también está arriba, limpiando el código aquí
+        btn.setStyleSheet("""
+            QPushButton { background-color: #007BFF; color: white; padding: 12px; font-weight: bold; border-radius: 4px; border: none; }
+            QPushButton:hover { background-color: #0056b3; }
+        """)
         btn.clicked.connect(self.validar)
         layout.addWidget(btn)
         
@@ -126,6 +73,7 @@ class LoginDialog(QDialog):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
+            # Tabla correcta: cfg_empresas
             cur.execute("SELECT cod_compania, razon_social FROM cfg_empresas WHERE estatus=True")
             rows = cur.fetchall()
             conn.close()
@@ -159,43 +107,48 @@ class LoginDialog(QDialog):
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
             
-            # Query corregida para incluir nombre_completo
-            query = "SELECT id_usuario, password_hash, rol, estatus, nombre_completo FROM seg_usuarios WHERE usuario_login = %s"
+
+            
+
+            # 1. Obtener credenciales del usuario
+            query = "SELECT id_usuario, password_hash, rol, estatus FROM seg_usuarios WHERE usuario_login = %s"
             cur.execute(query, (usuario,))
             data = cur.fetchone()
             
             if data:
-                db_id, db_hash, db_rol, db_activo, db_nombre = data
+                db_id, db_hash, db_rol, db_activo = data
                 
-                # Verificación de estatus (Asumiendo booleano True/False)
-                if not db_activo: 
+                # A. Verificar Estatus Global
+                if not db_activo:
                     conn.close()
-                    QMessageBox.warning(self, "Bloqueado", "Usuario inactivo.")
+                    QMessageBox.warning(self, "Bloqueado", "Usuario inactivo en el sistema.")
                     return
                 
-                # Verificación de contraseña
+                # B. Verificar Contraseña
                 input_hash = hashlib.sha256(password.encode()).hexdigest()
                 
                 if input_hash == db_hash:
-                    # Verificación de acceso a empresa
+                    # C. VERIFICAR ACCESO A LA EMPRESA (NUEVO)
+                    # Si NO es Administrador, debe estar explícitamente en la tabla sys_acceso_empresas
                     if db_rol != "Administrador":
                         cur.execute("""
                             SELECT 1 FROM sys_acceso_empresas 
                             WHERE id_usuario = %s AND cod_compania = %s
                         """, (db_id, cod_empresa))
                         
-                        if not cur.fetchone():
+                        acceso = cur.fetchone()
+                        if not acceso:
                             conn.close()
-                            QMessageBox.warning(self, "Acceso Denegado", "No tiene permiso para esta empresa.")
+                            QMessageBox.warning(self, "Acceso Denegado", 
+                                f"El usuario '{usuario}' no tiene permiso para acceder a\n{nombre_empresa}")
                             return
 
+                    # --- LOGIN EXITOSO ---
                     conn.close()
                     self.usuario_id = db_id
                     self.rol_usuario = db_rol
                     self.empresa_id = cod_empresa
                     self.nombre_empresa = nombre_empresa
-                    self.nombre_completo = db_nombre if db_nombre else usuario
-                    
                     self.accept()
                 else:
                     conn.close()
@@ -216,8 +169,7 @@ if __name__ == "__main__":
             cod_compania=login.empresa_id,
             id_usuario=login.usuario_id,
             nombre_empresa=login.nombre_empresa,
-            rol_usuario=login.rol_usuario,
-            nombre_real_usuario=login.nombre_completo 
+            rol_usuario=login.rol_usuario
         )
         menu.showMaximized() 
         sys.exit(app.exec())

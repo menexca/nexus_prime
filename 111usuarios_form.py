@@ -1,12 +1,11 @@
 import sys
 import psycopg2
 import hashlib
-import re
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QCheckBox, QComboBox, QMessageBox, QListWidget, 
     QFrame, QApplication, QFormLayout, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QTreeWidgetItemIterator
+    QHeaderView, QTreeWidgetItemIterator, QWidget
 )
 from PyQt6.QtGui import QFont, QPalette, QColor
 from PyQt6.QtCore import Qt
@@ -32,13 +31,11 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # Validamos contra seg_usuarios (plural)
             cur.execute("SELECT rol FROM seg_usuarios WHERE id_usuario = %s", (self.id_usuario_actual,))
             res = cur.fetchone()
             conn.close()
             if res: self.rol_usuario_sesion = res[0]
-        except Exception as e:
-            print(f"Error permisos: {e}")
+        except: pass
 
     def apply_styles(self):
         palette = self.palette()
@@ -90,50 +87,22 @@ class UsuariosForm(QWidget):
         left_panel.addWidget(QLabel("📝 Datos de Identificación"))
         
         form_layout = QFormLayout()
-        
-        self.txt_login = QLineEdit()
-        self.txt_login.setPlaceholderText("Ej: jperez")
+        self.txt_login = QLineEdit(); self.txt_login.setPlaceholderText("Ej: jperez")
         form_layout.addRow("Usuario (Login) *:", self.txt_login)
-        
         self.txt_nombre = QLineEdit()
-        self.txt_nombre.setPlaceholderText("Nombre y Apellido")
         form_layout.addRow("Nombre Completo *:", self.txt_nombre)
-        
-        # CAMPO NUEVO: EMAIL
-        self.txt_email = QLineEdit()
-        self.txt_email.setPlaceholderText("ejemplo@correo.com")
-        form_layout.addRow("Correo Electrónico:", self.txt_email)
-        
         self.cmb_rol = QComboBox()
         self.cmb_rol.addItems(["Operador", "Supervisor", "Administrador"])
         form_layout.addRow("Rol General:", self.cmb_rol)
-        
-        self.chk_activo = QCheckBox("Usuario Activo")
-        self.chk_activo.setChecked(True)
+        self.chk_activo = QCheckBox("Usuario Activo"); self.chk_activo.setChecked(True)
         form_layout.addRow("Estado:", self.chk_activo)
+        self.txt_pass1 = QLineEdit(); self.txt_pass1.setEchoMode(QLineEdit.EchoMode.Password)
+        form_layout.addRow("Contraseña:", self.txt_pass1)
+        self.txt_pass2 = QLineEdit(); self.txt_pass2.setEchoMode(QLineEdit.EchoMode.Password)
+        form_layout.addRow("Repetir:", self.txt_pass2)
         
         left_panel.addLayout(form_layout)
-        
-        # --- SECCIÓN CONTRASEÑA ---
-        gb_pass = QFrame()
-        gb_pass.setStyleSheet("border: 1px solid #ddd; border-radius: 4px; margin-top: 10px; padding: 5px;")
-        layout_pass = QFormLayout(gb_pass)
-        layout_pass.addRow(QLabel("<b>Seguridad</b>"))
-        
-        self.txt_pass1 = QLineEdit()
-        self.txt_pass1.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_pass1.setPlaceholderText("Nueva contraseña")
-        layout_pass.addRow("Contraseña:", self.txt_pass1)
-        
-        self.txt_pass2 = QLineEdit()
-        self.txt_pass2.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_pass2.setPlaceholderText("Repetir contraseña")
-        layout_pass.addRow("Repetir:", self.txt_pass2)
-        
-        left_panel.addWidget(gb_pass)
-        
         self.lbl_audit = QLabel("Creado: - | Modif: -")
-        self.lbl_audit.setStyleSheet("color: gray; font-size: 10px; margin-top: 5px;")
         left_panel.addWidget(self.lbl_audit)
         
         left_panel.addStretch()
@@ -197,18 +166,12 @@ class UsuariosForm(QWidget):
 
     def hash_password(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
-    
-    def validar_email(self, email):
-        # Regex simple para validar email
-        pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
-        return re.match(pattern, email) is not None
 
     def cargar_lista_usuarios(self):
         self.lista_usuarios.clear()
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # Consulta a seg_usuarios
             cur.execute("SELECT id_usuario, usuario_login, nombre_completo FROM seg_usuarios ORDER BY id_usuario")
             for u in cur.fetchall():
                 self.lista_usuarios.addItem(f"{u[1]} - {u[2]}")
@@ -216,9 +179,10 @@ class UsuariosForm(QWidget):
             conn.close()
             self.cargar_estructura_arbol()
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error cargando lista: {str(e)}")
+            QMessageBox.critical(self, "Error", str(e))
 
     def create_checkbox_widget(self):
+        """Crea un widget contenedor con un QCheckBox centrado"""
         widget = QWidget()
         chk = QCheckBox()
         layout = QHBoxLayout(widget)
@@ -232,6 +196,7 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
+            # Tabla: sys_moduser
             cur.execute("SELECT id_modulo, nombre_modulo, categoria FROM sys_moduser ORDER BY categoria, nombre_modulo")
             modulos = cur.fetchall()
             conn.close()
@@ -240,18 +205,23 @@ class UsuariosForm(QWidget):
             for m in modulos:
                 cat = m[2]
                 if cat not in categorias:
+                    # Crear Padre (Categoría)
                     parent = QTreeWidgetItem(self.tree_permisos)
                     parent.setText(0, cat.upper())
                     parent.setExpanded(True)
                     for c in range(5): parent.setBackground(c, QColor("#F2F2F2"))
                     categorias[cat] = parent
                 
+                # Crear Hijo (Módulo)
                 child = QTreeWidgetItem(categorias[cat])
                 child.setText(0, m[1])
-                child.setData(0, Qt.ItemDataRole.UserRole, m[0]) 
+                child.setData(0, Qt.ItemDataRole.UserRole, m[0]) # Guardar ID Modulo
                 
+                # --- SOLUCIÓN ROBUSTA: INCRUSTAR QCHECKBOX ---
                 for col in range(1, 5):
+                    # Crear contenedor y checkbox
                     container, chk = self.create_checkbox_widget()
+                    # Insertar en la celda
                     self.tree_permisos.setItemWidget(child, col, container)
                     
         except Exception as e:
@@ -260,15 +230,15 @@ class UsuariosForm(QWidget):
     def cargar_usuario(self, item):
         uid = item.data(Qt.ItemDataRole.UserRole)
         self.id_usuario_seleccionado = uid
-        self.cargar_estructura_arbol() 
+        self.cargar_estructura_arbol() # Reinicia y pone checkboxes vacíos
 
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
             
-            # Consultamos seg_usuarios incluyendo email
+            # 1. Datos del Usuario
             query = """
-                SELECT u.usuario_login, u.nombre_completo, u.email, u.rol, u.estatus, 
+                SELECT u.usuario_login, u.nombre_completo, u.rol, u.estatus, 
                        u1.usuario_login, u.fecha_creacion, 
                        u2.usuario_login, u.fecha_modifica
                 FROM seg_usuarios u
@@ -282,44 +252,51 @@ class UsuariosForm(QWidget):
             if data:
                 self.txt_login.setText(data[0]); self.txt_login.setReadOnly(True)
                 self.txt_nombre.setText(data[1])
-                self.txt_email.setText(data[2] if data[2] else "") # Cargar Email
-                self.cmb_rol.setCurrentText(data[3] or "Operador")
-                self.chk_activo.setChecked(data[4])
+                self.cmb_rol.setCurrentText(data[2] or "Operador")
+                self.chk_activo.setChecked(data[3])
                 
-                f_crea = str(data[6])[:16] if data[6] else "-"
-                f_mod = str(data[8])[:16] if data[8] else "-"
-                self.lbl_audit.setText(f"Crea: {data[5] or '-'} ({f_crea}) | Mod: {data[7] or '-'} ({f_mod})")
+                f_crea = str(data[5])[:16] if data[5] else "-"
+                f_mod = str(data[7])[:16] if data[7] else "-"
+                self.lbl_audit.setText(f"Crea: {data[4] or '-'} ({f_crea}) | Mod: {data[6] or '-'} ({f_mod})")
                 self.txt_pass1.clear(); self.txt_pass2.clear()
 
+            # 2. Cargar Permisos (sys_permisouser)
             cur.execute("SELECT id_modulo, p_ver, p_crear, p_editar, p_eliminar FROM sys_permisouser WHERE id_usuario = %s", (uid,))
-            permisos_db = cur.fetchall()
+            permisos_db = cur.fetchall() # Lista de tuplas
             
+            # Crear mapa { id_modulo: [ver, crear, edit, elim] }
             mapa_permisos = { row[0]: row[1:] for row in permisos_db }
 
+            # Recorrer árbol para marcar los QCheckBox
             iterator = QTreeWidgetItemIterator(self.tree_permisos)
             while iterator.value():
                 item_tree = iterator.value()
                 id_mod = item_tree.data(0, Qt.ItemDataRole.UserRole)
                 
                 if id_mod and id_mod in mapa_permisos:
-                    vals = mapa_permisos[id_mod]
-                    for i in range(4):
+                    vals = mapa_permisos[id_mod] # (True, False, ...)
+                    
+                    # Recuperar los widgets QCheckBox de las celdas
+                    for i in range(4): # 0 a 3 indices de vals
                         col_idx = i + 1
                         container = self.tree_permisos.itemWidget(item_tree, col_idx)
                         if container:
                             chk = container.findChild(QCheckBox)
                             if chk: chk.setChecked(vals[i])
+                
                 iterator += 1
+
             conn.close()
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error cargando usuario: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Error DB: {str(e)}")
 
     def marcar_arbol(self, estado):
+        """Marca o desmarca todos los checkboxes reales"""
         iterator = QTreeWidgetItemIterator(self.tree_permisos)
         while iterator.value():
             item = iterator.value()
-            if item.data(0, Qt.ItemDataRole.UserRole):
+            if item.data(0, Qt.ItemDataRole.UserRole): # Si es módulo
                 for col in range(1, 5):
                     container = self.tree_permisos.itemWidget(item, col)
                     if container:
@@ -331,51 +308,24 @@ class UsuariosForm(QWidget):
         self.id_usuario_seleccionado = None
         self.txt_login.clear(); self.txt_login.setReadOnly(False)
         self.txt_nombre.clear()
-        self.txt_email.clear()
         self.txt_pass1.clear(); self.txt_pass2.clear()
         self.lbl_audit.setText("Nuevo Usuario")
         self.cargar_estructura_arbol()
 
     def guardar_usuario(self):
         if self.rol_usuario_sesion != "Administrador": return
-        
         login = self.txt_login.text().strip()
         nombre = self.txt_nombre.text().strip()
-        email = self.txt_email.text().strip()
-        p1 = self.txt_pass1.text()
-        p2 = self.txt_pass2.text()
+        p1 = self.txt_pass1.text(); p2 = self.txt_pass2.text()
         
-        # VALIDACIÓN 1: Campos requeridos
-        if not login or not nombre: 
-            QMessageBox.warning(self, "Datos incompletos", "El Usuario y Nombre Completo son obligatorios.")
-            return
-
-        # VALIDACIÓN 2: Email (si escribieron algo)
-        if email and not self.validar_email(email):
-            QMessageBox.warning(self, "Email inválido", "El formato del correo no es correcto.")
-            return
+        if not login or not nombre: QMessageBox.warning(self, "Datos", "Faltan campos."); return
 
         pass_hash = None
-        
-        # MODO CREAR
         if self.id_usuario_seleccionado is None:
-            # VALIDACIÓN 3: Contraseña obligatoria al crear
-            if not p1: 
-                QMessageBox.warning(self, "Seguridad", "Debe asignar una contraseña al nuevo usuario.")
-                return
-            if p1 != p2:
-                QMessageBox.warning(self, "Error", "Las contraseñas no coinciden.")
-                return
-            
+            if not p1: QMessageBox.warning(self, "Pass", "Contraseña requerida."); return
             pass_hash = self.hash_password(p1)
-        
-        # MODO EDITAR
         else:
-            if p1: # Si escribió algo en el campo contraseña, quiere cambiarla
-                if p1 != p2:
-                    QMessageBox.warning(self, "Error", "Las contraseñas no coinciden.")
-                    return
-                pass_hash = self.hash_password(p1)
+            if p1: pass_hash = self.hash_password(p1)
 
         try:
             conn = psycopg2.connect(**DB_PARAMS)
@@ -384,31 +334,27 @@ class UsuariosForm(QWidget):
             
             # Guardar Usuario
             if new_id is None:
-                # VALIDACIÓN 4: Duplicados
                 cur.execute("SELECT 1 FROM seg_usuarios WHERE usuario_login=%s", (login,))
-                if cur.fetchone(): 
-                    QMessageBox.warning(self, "Duplicado", f"El usuario '{login}' ya existe.")
-                    conn.close()
-                    return
+                if cur.fetchone(): QMessageBox.warning(self, "Error", "Usuario existe."); conn.close(); return
                 
                 cur.execute("""
-                    INSERT INTO seg_usuarios (usuario_login, nombre_completo, email, password_hash, rol, estatus, id_user_crea)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id_usuario
-                """, (login, nombre, email, pass_hash, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual))
+                    INSERT INTO seg_usuarios (usuario_login, nombre_completo, password_hash, rol, estatus, id_user_crea)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_usuario
+                """, (login, nombre, pass_hash, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual))
                 new_id = cur.fetchone()[0]
             else:
                 if pass_hash:
                     cur.execute("""
-                        UPDATE seg_usuarios SET nombre_completo=%s, email=%s, password_hash=%s, rol=%s, estatus=%s, id_user_mod=%s
+                        UPDATE seg_usuarios SET nombre_completo=%s, password_hash=%s, rol=%s, estatus=%s, id_user_mod=%s
                         WHERE id_usuario=%s
-                    """, (nombre, email, pass_hash, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual, new_id))
+                    """, (nombre, pass_hash, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual, new_id))
                 else:
                     cur.execute("""
-                        UPDATE seg_usuarios SET nombre_completo=%s, email=%s, rol=%s, estatus=%s, id_user_mod=%s
+                        UPDATE seg_usuarios SET nombre_completo=%s, rol=%s, estatus=%s, id_user_mod=%s
                         WHERE id_usuario=%s
-                    """, (nombre, email, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual, new_id))
+                    """, (nombre, self.cmb_rol.currentText(), self.chk_activo.isChecked(), self.id_usuario_actual, new_id))
             
-            # Guardar Permisos
+            # Guardar Permisos (Leyendo los QCheckBox)
             cur.execute("DELETE FROM sys_permisouser WHERE id_usuario = %s", (new_id,))
             
             iterator = QTreeWidgetItemIterator(self.tree_permisos)
@@ -416,7 +362,8 @@ class UsuariosForm(QWidget):
                 item = iterator.value()
                 id_mod = item.data(0, Qt.ItemDataRole.UserRole)
                 
-                if id_mod: 
+                if id_mod: # Es un módulo
+                    # Leer estado de los QCheckBox incrustados
                     vals = []
                     for col in range(1, 5):
                         container = self.tree_permisos.itemWidget(item, col)
@@ -426,6 +373,7 @@ class UsuariosForm(QWidget):
                             if chk: checked = chk.isChecked()
                         vals.append(checked)
                     
+                    # Si alguno está marcado, guardar
                     if any(vals):
                         cur.execute("""
                             INSERT INTO sys_permisouser (id_usuario, id_modulo, p_ver, p_crear, p_editar, p_eliminar)
@@ -450,7 +398,7 @@ class UsuariosForm(QWidget):
             QMessageBox.warning(self, "Error", "No puedes auto-eliminarte.")
             return
 
-        if QMessageBox.question(self, "Confirmar", "¿Eliminar usuario definitivamente?") == QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, "Confirmar", "¿Eliminar usuario?") == QMessageBox.StandardButton.Yes:
             try:
                 conn = psycopg2.connect(**DB_PARAMS)
                 cur = conn.cursor()
@@ -460,7 +408,7 @@ class UsuariosForm(QWidget):
                 self.limpiar_formulario()
                 self.cargar_lista_usuarios()
             except Exception as e:
-                QMessageBox.critical(self, "Error", "No se puede eliminar (posiblemente tenga registros asociados).")
+                QMessageBox.critical(self, "Error", "No se puede eliminar.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

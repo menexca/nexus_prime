@@ -1,0 +1,8 @@
+-- Tabla intermedia: Qué usuarios pueden ver qué empresa
+CREATE TABLE IF NOT EXISTS sys_acceso_empresas (
+    id_usuario INT NOT NULL,
+    cod_compania INT NOT NULL,
+    PRIMARY KEY (id_usuario, cod_compania),
+    CONSTRAINT fk_acceso_user FOREIGN KEY (id_usuario) REFERENCES usuarios_sistema(id_usuario) ON DELETE CASCADE,
+    CONSTRAINT fk_acceso_emp FOREIGN KEY (cod_compania) REFERENCES cfg_empresas(cod_compania) ON DELETE CASCADE
+);

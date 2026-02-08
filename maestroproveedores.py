@@ -16,7 +16,7 @@ class ProveedorForm(QWidget):
         super().__init__()
         self.cod_compania_actual = cod_compania_actual
         self.id_user_actual = id_user_actual
-        self.db_conn = ConexionDB("localhost", "nexusdb", "postgres", "123Mm456*") # Configura tu DB
+        self.db_conn = ConexionDB("localssshost", "nexusdb", "postgres", "123Mm456*") # Configura tu DB
         self.setWindowTitle("Gestión de Maestros de Proveedores")
         self.setGeometry(100, 100, 1000, 700) # Tamaño de ventana
         self.apply_styles()
