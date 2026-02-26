@@ -217,7 +217,6 @@ class UsuariosForm(QWidget):
         btns_layout.addStretch()
         
         self.btn_eliminar = QPushButton("Eliminar Usuario")
-        self.btn_eliminar.setFixedHeight(45)
         self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
         self.btn_eliminar.clicked.connect(self.eliminar_usuario)
         btns_layout.addWidget(self.btn_eliminar)
@@ -401,10 +400,8 @@ class UsuariosForm(QWidget):
                 self.cmb_rol.setCurrentText(data[3] or "Operador")
                 self.chk_activo.setChecked(data[4])
                 
-                # --- CORRECCIÓN ZONA HORARIA Y FORMATO AM/PM ---
-                f_crea = data[6].strftime("%d/%m/%Y %I:%M %p") if data[6] else "-"
-                f_mod = data[8].strftime("%d/%m/%Y %I:%M %p") if data[8] else "-"
-                
+                f_crea = str(data[6])[:16] if data[6] else "-"
+                f_mod = str(data[8])[:16] if data[8] else "-"
                 self.lbl_audit.setText(f"Crea: {data[5] or '-'} ({f_crea}) | Mod: {data[7] or '-'} ({f_mod})")
                 self.txt_pass1.clear(); self.txt_pass2.clear()
 
@@ -470,10 +467,6 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            # --- CORRECCIÓN: ESTABLECER LA ZONA HORARIA ANTES DE GUARDAR ---
-            cur.execute("SET TIME ZONE 'America/Caracas'")
-            
             new_id = self.id_usuario_seleccionado
             
             if new_id is None:
@@ -553,7 +546,7 @@ class UsuariosForm(QWidget):
                 QMessageBox.critical(self, "Error", "No se puede eliminar (posiblemente tenga registros asociados).")
 
     # ==========================================
-    # LÓGICA DE EXPORTACIÓN Y REPORTES (TEMPORALES)
+    # LÓGICA DE EXPORTACIÓN Y REPORTES (SOLO LECTURA)
     # ==========================================
     def preparar_reporte(self, formato):
         if not self.id_usuario_seleccionado:
@@ -619,7 +612,7 @@ class UsuariosForm(QWidget):
         estilo_texto = estilos['Normal']
 
         elementos.append(Paragraph("NEXUS ERP - Reporte de Seguridad", estilo_titulo))
-        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", estilo_texto))
+        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_texto))
         elementos.append(Spacer(1, 20))
 
         elementos.append(Paragraph("Datos de Identificación del Usuario", estilo_subtitulo))
@@ -701,7 +694,7 @@ class UsuariosForm(QWidget):
         ws['A1'].fill = fill_titulo
         ws.merge_cells('A1:F1')
         
-        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}"])
+        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"])
         ws.append([])
         
         ws.append(["DATOS DEL USUARIO"])
@@ -761,7 +754,7 @@ class UsuariosForm(QWidget):
             f.write("=" * 60 + "\n")
             f.write(" NEXUS ERP - REPORTE DE SEGURIDAD\n")
             f.write("=" * 60 + "\n")
-            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}\n\n")
+            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n")
             
             f.write("--- DATOS DEL USUARIO ---\n")
             f.write(f"Login:            {u_data[0]}\n")

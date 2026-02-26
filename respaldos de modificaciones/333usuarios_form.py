@@ -1,7 +1,5 @@
 import sys
 import os
-import tempfile 
-import stat # <--- NUEVO IMPORT PARA CAMBIAR PERMISOS A "SOLO LECTURA"
 import psycopg2
 import hashlib
 import re
@@ -10,9 +8,9 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QCheckBox, QComboBox, QMessageBox, QListWidget, 
     QFrame, QApplication, QFormLayout, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QMenu
+    QHeaderView, QTreeWidgetItemIterator, QMenu
 )
-from PyQt6.QtGui import QFont, QPalette, QColor
+from PyQt6.QtGui import QFont, QPalette, QColor, QAction
 from PyQt6.QtCore import Qt
 from db_config import DB_PARAMS
 
@@ -22,7 +20,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 import openpyxl
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 
 class UsuariosForm(QWidget):
     def __init__(self, id_usuario_actual):
@@ -39,8 +37,6 @@ class UsuariosForm(QWidget):
         self.apply_styles()
         self.init_ui()
         self.cargar_lista_usuarios()
-        
-        self.cancelar_accion()
 
     def verificar_permisos(self):
         try:
@@ -69,9 +65,11 @@ class UsuariosForm(QWidget):
             
             QPushButton#btn_reporte {
                 background-color: #17A2B8; 
-                padding-right: 25px; 
+                padding-right: 25px; /* Espacio para la flecha del menú */
             }
-            QPushButton#btn_reporte:hover { background-color: #138496; }
+            QPushButton#btn_reporte:hover {
+                background-color: #138496;
+            }
             QPushButton#btn_reporte::menu-indicator {
                 subcontrol-origin: padding;
                 subcontrol-position: right center;
@@ -81,7 +79,6 @@ class UsuariosForm(QWidget):
                 border: 1px solid #cccccc; border-radius: 4px; padding: 5px; background-color: white;
             }
             QLineEdit:focus { border: 1px solid #007BFF; }
-            QLineEdit:disabled, QComboBox:disabled { background-color: #E9ECEF; color: #6C757D; }
             QLineEdit:read-only { background-color: #E0E0E0; color: #555; }
             
             QListWidget, QTreeWidget {
@@ -172,18 +169,18 @@ class UsuariosForm(QWidget):
         header_perm.addWidget(QLabel("🛡️ Permisología del Sistema"))
         header_perm.addStretch()
         
-        self.btn_all = QPushButton("Marcar Todo")
-        self.btn_all.setFixedSize(90, 25)
-        self.btn_all.setStyleSheet("font-size: 10px; background-color: #6c757d;")
-        self.btn_all.clicked.connect(lambda: self.marcar_arbol(True))
+        btn_all = QPushButton("Marcar Todo")
+        btn_all.setFixedSize(90, 25)
+        btn_all.setStyleSheet("font-size: 10px; background-color: #6c757d;")
+        btn_all.clicked.connect(lambda: self.marcar_arbol(True))
         
-        self.btn_none = QPushButton("Desmarcar")
-        self.btn_none.setFixedSize(80, 25)
-        self.btn_none.setStyleSheet("font-size: 10px; background-color: #6c757d;")
-        self.btn_none.clicked.connect(lambda: self.marcar_arbol(False))
+        btn_none = QPushButton("Desmarcar")
+        btn_none.setFixedSize(80, 25)
+        btn_none.setStyleSheet("font-size: 10px; background-color: #6c757d;")
+        btn_none.clicked.connect(lambda: self.marcar_arbol(False))
 
-        header_perm.addWidget(self.btn_all)
-        header_perm.addWidget(self.btn_none)
+        header_perm.addWidget(btn_all)
+        header_perm.addWidget(btn_none)
         right_panel.addLayout(header_perm)
 
         self.tree_permisos = QTreeWidget()
@@ -195,11 +192,12 @@ class UsuariosForm(QWidget):
 
         btns_layout = QHBoxLayout()
         
-        # --- BOTÓN DE REPORTE ---
+        # --- BOTÓN DE REPORTE CON MENÚ DESPLEGABLE ---
         self.btn_reporte = QPushButton("📄 Generar Reporte ▾")
         self.btn_reporte.setObjectName("btn_reporte")
         self.btn_reporte.setFixedHeight(45)
         
+        # Crear el menú para elegir formato
         menu_reportes = QMenu(self)
         menu_reportes.setStyleSheet("QMenu { background-color: white; border: 1px solid #ccc; } QMenu::item { padding: 8px 25px; } QMenu::item:selected { background-color: #007BFF; color: white; }")
         
@@ -217,29 +215,15 @@ class UsuariosForm(QWidget):
         btns_layout.addStretch()
         
         self.btn_eliminar = QPushButton("Eliminar Usuario")
-        self.btn_eliminar.setFixedHeight(45)
         self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
         self.btn_eliminar.clicked.connect(self.eliminar_usuario)
         btns_layout.addWidget(self.btn_eliminar)
-
-        self.btn_cancelar = QPushButton("Cancelar")
-        self.btn_cancelar.setStyleSheet("background-color: #6c757d; color: white;")
-        self.btn_cancelar.setFixedHeight(45)
-        self.btn_cancelar.clicked.connect(self.cancelar_accion)
-        btns_layout.addWidget(self.btn_cancelar)
         
         self.btn_guardar = QPushButton("GUARDAR CAMBIOS")
         self.btn_guardar.setFixedHeight(45)
         self.btn_guardar.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
         self.btn_guardar.clicked.connect(self.guardar_usuario)
         btns_layout.addWidget(self.btn_guardar)
-
-        # --- BOTÓN DE SALIR ---
-        self.btn_salir = QPushButton("Salir")
-        self.btn_salir.setFixedHeight(45)
-        self.btn_salir.setStyleSheet("background-color: #343a40; color: white; font-weight: bold;")
-        self.btn_salir.clicked.connect(self.close)
-        btns_layout.addWidget(self.btn_salir)
 
         if self.rol_usuario_sesion != "Administrador":
             self.btn_guardar.setEnabled(False)
@@ -250,57 +234,7 @@ class UsuariosForm(QWidget):
         main_layout.addLayout(right_panel)
         self.setLayout(main_layout)
 
-    # --- LÓGICA DE ESTADOS Y UI ---
-
-    def set_estado_formulario(self, activo):
-        if self.rol_usuario_sesion != "Administrador":
-            activo = False 
-            
-        self.txt_login.setEnabled(activo)
-        self.txt_nombre.setEnabled(activo)
-        self.txt_email.setEnabled(activo)
-        self.cmb_rol.setEnabled(activo)
-        self.chk_activo.setEnabled(activo)
-        self.txt_pass1.setEnabled(activo)
-        self.txt_pass2.setEnabled(activo)
-        
-        self.btn_all.setEnabled(activo)
-        self.btn_none.setEnabled(activo)
-        self.tree_permisos.setEnabled(activo)
-        
-        self.btn_guardar.setEnabled(activo)
-        self.btn_cancelar.setEnabled(activo)
-        
-        if activo and self.id_usuario_seleccionado is not None:
-            self.btn_eliminar.setEnabled(True)
-        else:
-            self.btn_eliminar.setEnabled(False)
-
-    def cancelar_accion(self):
-        self.id_usuario_seleccionado = None
-        self.lista_usuarios.clearSelection()
-        self.txt_login.clear()
-        self.txt_login.setReadOnly(False)
-        self.txt_nombre.clear()
-        self.txt_email.clear()
-        self.txt_pass1.clear()
-        self.txt_pass2.clear()
-        self.lbl_audit.setText("Seleccione una acción (Nuevo o Editar)")
-        self.cargar_estructura_arbol()
-        self.set_estado_formulario(False)
-
-    def limpiar_formulario(self):
-        self.id_usuario_seleccionado = None
-        self.lista_usuarios.clearSelection()
-        self.txt_login.clear()
-        self.txt_login.setReadOnly(False)
-        self.txt_nombre.clear()
-        self.txt_email.clear()
-        self.txt_pass1.clear()
-        self.txt_pass2.clear()
-        self.lbl_audit.setText("Creando Nuevo Usuario...")
-        self.cargar_estructura_arbol()
-        self.set_estado_formulario(True) 
+    # --- LÓGICA DE NEGOCIO ---
 
     def hash_password(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
@@ -362,17 +296,6 @@ class UsuariosForm(QWidget):
         except Exception as e:
             print(f"Error cargando árbol: {e}")
 
-    def marcar_arbol(self, estado):
-        for i in range(self.tree_permisos.topLevelItemCount()):
-            cat_item = self.tree_permisos.topLevelItem(i)
-            for j in range(cat_item.childCount()):
-                mod_item = cat_item.child(j)
-                for col in range(1, 5):
-                    container = self.tree_permisos.itemWidget(mod_item, col)
-                    if container:
-                        chk = container.findChild(QCheckBox)
-                        if chk: chk.setChecked(estado)
-
     def cargar_usuario(self, item):
         uid = item.data(Qt.ItemDataRole.UserRole)
         self.id_usuario_seleccionado = uid
@@ -401,34 +324,31 @@ class UsuariosForm(QWidget):
                 self.cmb_rol.setCurrentText(data[3] or "Operador")
                 self.chk_activo.setChecked(data[4])
                 
-                # --- CORRECCIÓN ZONA HORARIA Y FORMATO AM/PM ---
-                f_crea = data[6].strftime("%d/%m/%Y %I:%M %p") if data[6] else "-"
-                f_mod = data[8].strftime("%d/%m/%Y %I:%M %p") if data[8] else "-"
-                
+                f_crea = str(data[6])[:16] if data[6] else "-"
+                f_mod = str(data[8])[:16] if data[8] else "-"
                 self.lbl_audit.setText(f"Crea: {data[5] or '-'} ({f_crea}) | Mod: {data[7] or '-'} ({f_mod})")
                 self.txt_pass1.clear(); self.txt_pass2.clear()
 
             cur.execute("SELECT id_modulo, p_ver, p_crear, p_editar, p_eliminar FROM sys_permisouser WHERE id_usuario = %s", (uid,))
             permisos_db = cur.fetchall()
-            conn.close()
             
             mapa_permisos = { row[0]: row[1:] for row in permisos_db }
 
-            for i in range(self.tree_permisos.topLevelItemCount()):
-                cat_item = self.tree_permisos.topLevelItem(i)
-                for j in range(cat_item.childCount()):
-                    mod_item = cat_item.child(j)
-                    id_mod = mod_item.data(0, Qt.ItemDataRole.UserRole)
-                    
-                    if id_mod and id_mod in mapa_permisos:
-                        vals = mapa_permisos[id_mod]
-                        for col in range(4):
-                            container = self.tree_permisos.itemWidget(mod_item, col + 1)
-                            if container:
-                                chk = container.findChild(QCheckBox)
-                                if chk: chk.setChecked(vals[col])
-
-            self.set_estado_formulario(True) 
+            iterator = QTreeWidgetItemIterator(self.tree_permisos)
+            while iterator.value():
+                item_tree = iterator.value()
+                id_mod = item_tree.data(0, Qt.ItemDataRole.UserRole)
+                
+                if id_mod and id_mod in mapa_permisos:
+                    vals = mapa_permisos[id_mod]
+                    for i in range(4):
+                        col_idx = i + 1
+                        container = self.tree_permisos.itemWidget(item_tree, col_idx)
+                        if container:
+                            chk = container.findChild(QCheckBox)
+                            if chk: chk.setChecked(vals[i])
+                iterator += 1
+            conn.close()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error cargando usuario: {str(e)}")
@@ -470,10 +390,6 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            # --- CORRECCIÓN: ESTABLECER LA ZONA HORARIA ANTES DE GUARDAR ---
-            cur.execute("SET TIME ZONE 'America/Caracas'")
-            
             new_id = self.id_usuario_seleccionado
             
             if new_id is None:
@@ -502,32 +418,33 @@ class UsuariosForm(QWidget):
             
             cur.execute("DELETE FROM sys_permisouser WHERE id_usuario = %s", (new_id,))
             
-            for i in range(self.tree_permisos.topLevelItemCount()):
-                cat_item = self.tree_permisos.topLevelItem(i)
-                for j in range(cat_item.childCount()):
-                    mod_item = cat_item.child(j)
-                    id_mod = mod_item.data(0, Qt.ItemDataRole.UserRole)
+            iterator = QTreeWidgetItemIterator(self.tree_permisos)
+            while iterator.value():
+                item = iterator.value()
+                id_mod = item.data(0, Qt.ItemDataRole.UserRole)
+                
+                if id_mod: 
+                    vals = []
+                    for col in range(1, 5):
+                        container = self.tree_permisos.itemWidget(item, col)
+                        checked = False
+                        if container:
+                            chk = container.findChild(QCheckBox)
+                            if chk: checked = chk.isChecked()
+                        vals.append(checked)
                     
-                    if id_mod: 
-                        vals = []
-                        for col in range(1, 5):
-                            container = self.tree_permisos.itemWidget(mod_item, col)
-                            checked = False
-                            if container:
-                                chk = container.findChild(QCheckBox)
-                                if chk: checked = chk.isChecked()
-                            vals.append(checked)
-                        
-                        if any(vals):
-                            cur.execute("""
-                                INSERT INTO sys_permisouser (id_usuario, id_modulo, p_ver, p_crear, p_editar, p_eliminar)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (new_id, id_mod, vals[0], vals[1], vals[2], vals[3]))
+                    if any(vals):
+                        cur.execute("""
+                            INSERT INTO sys_permisouser (id_usuario, id_modulo, p_ver, p_crear, p_editar, p_eliminar)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (new_id, id_mod, vals[0], vals[1], vals[2], vals[3]))
+                
+                iterator += 1
 
             conn.commit()
             conn.close()
             QMessageBox.information(self, "Éxito", "Usuario guardado correctamente.")
-            self.cancelar_accion() 
+            self.limpiar_formulario()
             self.cargar_lista_usuarios()
             
         except Exception as e:
@@ -547,13 +464,22 @@ class UsuariosForm(QWidget):
                 cur.execute("DELETE FROM seg_usuarios WHERE id_usuario=%s", (self.id_usuario_seleccionado,))
                 conn.commit()
                 conn.close()
-                self.cancelar_accion()
+                self.limpiar_formulario()
                 self.cargar_lista_usuarios()
             except Exception as e:
                 QMessageBox.critical(self, "Error", "No se puede eliminar (posiblemente tenga registros asociados).")
 
+    def limpiar_formulario(self):
+        self.id_usuario_seleccionado = None
+        self.txt_login.clear(); self.txt_login.setReadOnly(False)
+        self.txt_nombre.clear()
+        self.txt_email.clear()
+        self.txt_pass1.clear(); self.txt_pass2.clear()
+        self.lbl_audit.setText("Nuevo Usuario")
+        self.cargar_estructura_arbol()
+
     # ==========================================
-    # LÓGICA DE EXPORTACIÓN Y REPORTES (TEMPORALES)
+    # LÓGICA DE EXPORTACIÓN Y REPORTES
     # ==========================================
     def preparar_reporte(self, formato):
         if not self.id_usuario_seleccionado:
@@ -565,9 +491,11 @@ class UsuariosForm(QWidget):
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
             
+            # 1. Datos del Usuario
             cur.execute("SELECT usuario_login, nombre_completo, email, rol, estatus FROM seg_usuarios WHERE id_usuario = %s", (uid,))
             usuario_data = cur.fetchone()
             
+            # 2. Empresas asociadas
             cur.execute("""
                 SELECT c.razon_social, c.rif 
                 FROM sys_acceso_empresas a
@@ -577,6 +505,7 @@ class UsuariosForm(QWidget):
             """, (uid,))
             empresas_data = cur.fetchall()
 
+            # 3. Permisos
             cur.execute("""
                 SELECT m.categoria, m.nombre_modulo, p.p_ver, p.p_crear, p.p_editar, p.p_eliminar
                 FROM sys_permisouser p
@@ -587,14 +516,19 @@ class UsuariosForm(QWidget):
             permisos_data = cur.fetchall()
             conn.close()
 
-            if formato == "PDF": self.generar_pdf(usuario_data, empresas_data, permisos_data)
-            elif formato == "EXCEL": self.generar_excel(usuario_data, empresas_data, permisos_data)
-            elif formato == "TXT": self.generar_txt(usuario_data, empresas_data, permisos_data)
+            # Enrutar según formato elegido
+            if formato == "PDF":
+                self.generar_pdf(usuario_data, empresas_data, permisos_data)
+            elif formato == "EXCEL":
+                self.generar_excel(usuario_data, empresas_data, permisos_data)
+            elif formato == "TXT":
+                self.generar_txt(usuario_data, empresas_data, permisos_data)
                 
         except Exception as e:
             QMessageBox.critical(self, "Error BD", f"Error al recopilar datos para el reporte: {str(e)}")
 
     def abrir_archivo(self, filepath):
+        """Abre el archivo generado en el programa predeterminado de Windows/Mac/Linux"""
         if sys.platform == "win32":
             os.startfile(filepath)
         elif sys.platform == "darwin":
@@ -605,11 +539,8 @@ class UsuariosForm(QWidget):
             subprocess.call(["xdg-open", filepath])
 
     def generar_pdf(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.pdf")
-            
-        doc = SimpleDocTemplate(filepath, pagesize=letter)
+        pdf_filename = f"Reporte_Usuario_{u_data[0]}.pdf"
+        doc = SimpleDocTemplate(pdf_filename, pagesize=letter)
         elementos = []
         estilos = getSampleStyleSheet()
         
@@ -619,7 +550,7 @@ class UsuariosForm(QWidget):
         estilo_texto = estilos['Normal']
 
         elementos.append(Paragraph("NEXUS ERP - Reporte de Seguridad", estilo_titulo))
-        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", estilo_texto))
+        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_texto))
         elementos.append(Spacer(1, 20))
 
         elementos.append(Paragraph("Datos de Identificación del Usuario", estilo_subtitulo))
@@ -676,34 +607,31 @@ class UsuariosForm(QWidget):
             elementos.append(Paragraph("No cuenta con privilegios en módulos.", estilo_texto))
 
         doc.build(elementos)
-        
-        # MAGIA: Hacer que el PDF sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
-        self.abrir_archivo(filepath)
+        self.abrir_archivo(pdf_filename)
 
     def generar_excel(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.xlsx")
-            
+        excel_filename = f"Reporte_Usuario_{u_data[0]}.xlsx"
+        
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Reporte de Seguridad"
 
+        # Estilos Excel
         ft_titulo = Font(size=14, bold=True, color="FFFFFF")
         fill_titulo = PatternFill(start_color="007BFF", end_color="007BFF", fill_type="solid")
         ft_negrita = Font(bold=True)
         fill_cabecera = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
 
+        # Escribir Datos
         ws.append(["NEXUS ERP - Reporte de Seguridad"])
         ws['A1'].font = ft_titulo
         ws['A1'].fill = fill_titulo
         ws.merge_cells('A1:F1')
         
-        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}"])
+        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"])
         ws.append([])
         
+        # Bloque Usuario
         ws.append(["DATOS DEL USUARIO"])
         ws['A4'].font = ft_negrita
         ws.append(["Login:", u_data[0]])
@@ -714,6 +642,7 @@ class UsuariosForm(QWidget):
         for row in range(5, 10): ws[f'A{row}'].font = ft_negrita
         ws.append([])
 
+        # Bloque Empresas
         ws.append(["EMPRESAS AUTORIZADAS"])
         r_idx = ws.max_row
         ws[f'A{r_idx}'].font = ft_negrita
@@ -728,6 +657,7 @@ class UsuariosForm(QWidget):
             ws.append(["Sin acceso a empresas"])
         ws.append([])
 
+        # Bloque Permisos
         ws.append(["MÓDULOS Y PERMISOS"])
         r_idx = ws.max_row
         ws[f'A{r_idx}'].font = ft_negrita
@@ -742,26 +672,21 @@ class UsuariosForm(QWidget):
         else:
             ws.append(["Sin permisos asignados"])
 
+        # Ajustar anchos
         ws.column_dimensions['A'].width = 25
         ws.column_dimensions['B'].width = 35
 
-        wb.save(filepath)
-        
-        # MAGIA: Hacer que el Excel sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
-        self.abrir_archivo(filepath)
+        wb.save(excel_filename)
+        self.abrir_archivo(excel_filename)
 
     def generar_txt(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.txt")
-            
-        with open(filepath, 'w', encoding='utf-8') as f:
+        txt_filename = f"Reporte_Usuario_{u_data[0]}.txt"
+        
+        with open(txt_filename, 'w', encoding='utf-8') as f:
             f.write("=" * 60 + "\n")
             f.write(" NEXUS ERP - REPORTE DE SEGURIDAD\n")
             f.write("=" * 60 + "\n")
-            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}\n\n")
+            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n")
             
             f.write("--- DATOS DEL USUARIO ---\n")
             f.write(f"Login:            {u_data[0]}\n")
@@ -791,13 +716,10 @@ class UsuariosForm(QWidget):
             else:
                 f.write("No cuenta con privilegios en módulos.\n")
 
-        # MAGIA: Hacer que el TXT sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
-        self.abrir_archivo(filepath)
+        self.abrir_archivo(txt_filename)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = UsuariosForm(1)
-    window.showMaximized() 
+    window.showMaximized() #show()
     sys.exit(app.exec())

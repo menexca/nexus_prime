@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QCheckBox, QComboBox, QTextEdit, QTabWidget, QFormLayout, 
     QMessageBox, QListWidget, QDoubleSpinBox, QGroupBox, QApplication, QFrame,
-    QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator
+    QTreeWidget, QTreeWidgetItem
 )
 from PyQt6.QtGui import QFont, QPalette, QColor
 from PyQt6.QtCore import Qt
@@ -27,12 +27,14 @@ class EmpresasForm(QWidget):
         self.init_ui()
         self.cargar_lista_empresas()
         self.cargar_catalogo_usuarios() 
+        
+        # Iniciar el formulario en estado neutral (bloqueado)
+        self.cancelar_accion()
 
     def verificar_permisos_usuario(self):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            # CORRECCIÓN: seg_usuarios
             query = "SELECT rol FROM seg_usuarios WHERE id_usuario = %s"
             cur.execute(query, (self.id_usuario_actual,))
             res = cur.fetchone()
@@ -63,7 +65,10 @@ class EmpresasForm(QWidget):
             QLineEdit, QTextEdit, QComboBox, QDoubleSpinBox {
                 border: 1px solid #cccccc; border-radius: 4px; padding: 5px; background-color: #FFFFFF;
             }
-            QLineEdit:focus { border: 1px solid #007BFF; }
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus { border: 1px solid #007BFF; }
+            QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QDoubleSpinBox:disabled { 
+                background-color: #E9ECEF; color: #6C757D; 
+            }
             QLineEdit:read-only { background-color: #E0E0E0; color: #555; }
             
             QListWidget, QTreeWidget {
@@ -193,11 +198,11 @@ class EmpresasForm(QWidget):
         layout_seg.addWidget(self.arbol_usuarios)
         
         self.btn_todos = QPushButton("Marcar Todos")
-        self.btn_todos.setFixedSize(115, 27)
+        self.btn_todos.setFixedSize(100, 25)
         self.btn_todos.clicked.connect(lambda: self.marcar_usuarios(True))
         
         self.btn_ninguno = QPushButton("Desmarcar")
-        self.btn_ninguno.setFixedSize(105, 27)
+        self.btn_ninguno.setFixedSize(100, 25)
         self.btn_ninguno.clicked.connect(lambda: self.marcar_usuarios(False))
         
         layout_btns_seg = QHBoxLayout()
@@ -403,14 +408,10 @@ class EmpresasForm(QWidget):
                 self.txt_cod_contribuyente.setText(data[15] or "")
                 self.spin_patente.setValue(float(data[16] or 0.0))
                 
-                # --- NUEVO: Formateo de hora local y AM/PM ---
-                f_crea = data[18].strftime("%d/%m/%Y %I:%M %p") if data[18] else "-"
-                f_mod = data[20].strftime("%d/%m/%Y %I:%M %p") if data[20] else "-"
-                
                 self.lbl_creado_por.setText(f"Creado por: {data[17] or 'Sistema'}")
-                self.lbl_fecha_crea.setText(f"Fecha: {f_crea}")
+                self.lbl_fecha_crea.setText(f"Fecha: {str(data[18])[:16]}")
                 self.lbl_modif_por.setText(f"Modif. por: {data[19] or '-'}")
-                self.lbl_fecha_mod.setText(f"Fecha: {f_mod}")
+                self.lbl_fecha_mod.setText(f"Fecha: {str(data[20])[:16]}")
 
             # Cargar Acceso de Usuarios
             self.marcar_usuarios(False) 
@@ -418,7 +419,7 @@ class EmpresasForm(QWidget):
             cur.execute("SELECT id_usuario FROM sys_acceso_empresas WHERE cod_compania = %s", (id_empresa,))
             usuarios_acceso = [row[0] for row in cur.fetchall()]
             
-            # Bucle for en lugar de Iterator
+            # SOLUCIÓN CRASHEO: Bucle for en lugar de Iterator
             for i in range(self.arbol_usuarios.topLevelItemCount()):
                 item_tree = self.arbol_usuarios.topLevelItem(i)
                 uid = item_tree.data(0, Qt.ItemDataRole.UserRole)
@@ -436,7 +437,7 @@ class EmpresasForm(QWidget):
             QMessageBox.critical(self, "Error", str(e))
 
     def marcar_usuarios(self, marcar):
-        # Bucle for en lugar de Iterator
+        # SOLUCIÓN CRASHEO: Bucle for en lugar de Iterator
         for i in range(self.arbol_usuarios.topLevelItemCount()):
             item = self.arbol_usuarios.topLevelItem(i)
             container = self.arbol_usuarios.itemWidget(item, 0)
@@ -445,6 +446,7 @@ class EmpresasForm(QWidget):
                 if chk: chk.setChecked(marcar)
 
     def validar_rif(self, rif):
+        # Valida formatos tipo: J-12345678-0, V-12345678, G-12345678-9
         pattern = r"^[JVEGPC]-\d{5,9}(-\d)?$"
         return re.match(pattern, rif) is not None
 
@@ -468,10 +470,6 @@ class EmpresasForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            # --- CORRECCIÓN DE ZONA HORARIA ---
-            # Le indicamos a Postgres que guarde la hora con respecto a Venezuela
-            cur.execute("SET TIME ZONE 'America/Caracas'")
             
             if self.id_empresa_seleccionada is None:
                 query = """
@@ -509,6 +507,7 @@ class EmpresasForm(QWidget):
 
             cur.execute("DELETE FROM sys_acceso_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
             
+            # SOLUCIÓN CRASHEO: Bucle for en lugar de Iterator
             for i in range(self.arbol_usuarios.topLevelItemCount()):
                 item = self.arbol_usuarios.topLevelItem(i)
                 container = self.arbol_usuarios.itemWidget(item, 0)

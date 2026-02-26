@@ -81,10 +81,11 @@ class ProveedorForm(QWidget):
         left_panel = QVBoxLayout()
         left_panel.addWidget(QLabel("🚛 Mis Proveedores"))
         
-        # BARRA DE BÚSQUEDA
+        # --- NUEVO: BARRA DE BÚSQUEDA ---
         layout_buscar = QHBoxLayout()
         self.txt_buscar = QLineEdit()
         self.txt_buscar.setPlaceholderText("Buscar nombre o RIF...")
+        # Permitir buscar al presionar Enter
         self.txt_buscar.returnPressed.connect(self.cargar_lista_proveedores) 
         
         self.btn_buscar = QPushButton("Buscar")
@@ -94,6 +95,7 @@ class ProveedorForm(QWidget):
         layout_buscar.addWidget(self.txt_buscar)
         layout_buscar.addWidget(self.btn_buscar)
         left_panel.addLayout(layout_buscar)
+        # --------------------------------
         
         self.lista_proveedores = QListWidget()
         self.lista_proveedores.itemClicked.connect(self.cargar_datos_formulario)
@@ -265,6 +267,7 @@ class ProveedorForm(QWidget):
             self.btn_eliminar.setToolTip("Sin Permisos")
             
         for widget in self.findChildren(QLineEdit): 
+            # No desactivar la barra de búsqueda nunca
             if widget != self.txt_buscar:
                 widget.setEnabled(activo)
                 
@@ -277,7 +280,7 @@ class ProveedorForm(QWidget):
         
         if activo and self.cod_proveedor_seleccionado is not None:
             self.btn_eliminar.setEnabled(True)
-            self.txt_cod_proveedor.setReadOnly(True) 
+            self.txt_cod_proveedor.setReadOnly(True) # No se cambia la PK
         else:
             self.btn_eliminar.setEnabled(False)
             self.txt_cod_proveedor.setReadOnly(False)
@@ -288,7 +291,7 @@ class ProveedorForm(QWidget):
         self.lista_proveedores.clearSelection()
         
         for widget in self.findChildren(QLineEdit): 
-            if widget != self.txt_buscar: 
+            if widget != self.txt_buscar: # No borrar la búsqueda al cancelar
                 widget.clear()
                 
         for widget in self.findChildren(QTextEdit): widget.clear()
@@ -311,6 +314,8 @@ class ProveedorForm(QWidget):
         return re.match(pattern, rif) is not None
 
     # --- LÓGICA DE BASE DE DATOS ---
+    
+    # --- ACTUALIZADO: BÚSQUEDA INTEGRADA ---
     def cargar_lista_proveedores(self):
         self.lista_proveedores.clear()
         filtro = self.txt_buscar.text().strip() if hasattr(self, 'txt_buscar') else ""
@@ -320,6 +325,7 @@ class ProveedorForm(QWidget):
             cur = conn.cursor()
             
             if filtro:
+                # Busca por nombre o RIF que contenga el texto (ILIKE no distingue mayúsculas/minúsculas)
                 query = """
                     SELECT cod_proveedor, nombre_proveedor, rif 
                     FROM maestro_proveedores 
@@ -330,6 +336,7 @@ class ProveedorForm(QWidget):
                 patron = f"%{filtro}%"
                 cur.execute(query, (self.cod_compania, patron, patron))
             else:
+                # Si el buscador está vacío, carga todos
                 query = "SELECT cod_proveedor, nombre_proveedor, rif FROM maestro_proveedores WHERE cod_compania = %s ORDER BY nombre_proveedor"
                 cur.execute(query, (self.cod_compania,))
                 
@@ -343,7 +350,7 @@ class ProveedorForm(QWidget):
     def cargar_datos_formulario(self, item):
         cod_prov = item.data(Qt.ItemDataRole.UserRole)
         self.cod_proveedor_seleccionado = cod_prov
-        self.lbl_titulo_form.setText("Cargando datos...") 
+        self.lbl_titulo_form.setText(f"Editando Proveedor: {cod_prov}")
         
         try:
             conn = psycopg2.connect(**DB_PARAMS)
@@ -366,10 +373,6 @@ class ProveedorForm(QWidget):
             conn.close()
             
             if d:
-                # --- AQUÍ SE ACTUALIZA EL TÍTULO CON EL CÓDIGO Y EL NOMBRE ---
-                nombre_proveedor = d[3] or "Sin Nombre"
-                self.lbl_titulo_form.setText(f"Editando Proveedor: {cod_prov} - {nombre_proveedor}")
-                
                 self.txt_cod_proveedor.setText(cod_prov)
                 self.cmb_tipo_prov.setCurrentText(d[0] or "")
                 self.txt_rif.setText(d[1] or "")

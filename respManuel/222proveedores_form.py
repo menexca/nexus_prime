@@ -81,20 +81,6 @@ class ProveedorForm(QWidget):
         left_panel = QVBoxLayout()
         left_panel.addWidget(QLabel("🚛 Mis Proveedores"))
         
-        # BARRA DE BÚSQUEDA
-        layout_buscar = QHBoxLayout()
-        self.txt_buscar = QLineEdit()
-        self.txt_buscar.setPlaceholderText("Buscar nombre o RIF...")
-        self.txt_buscar.returnPressed.connect(self.cargar_lista_proveedores) 
-        
-        self.btn_buscar = QPushButton("Buscar")
-        self.btn_buscar.setStyleSheet("background-color: #6c757d; color: white; padding: 6px; font-size: 11px;")
-        self.btn_buscar.clicked.connect(self.cargar_lista_proveedores)
-        
-        layout_buscar.addWidget(self.txt_buscar)
-        layout_buscar.addWidget(self.btn_buscar)
-        left_panel.addLayout(layout_buscar)
-        
         self.lista_proveedores = QListWidget()
         self.lista_proveedores.itemClicked.connect(self.cargar_datos_formulario)
         left_panel.addWidget(self.lista_proveedores)
@@ -264,10 +250,7 @@ class ProveedorForm(QWidget):
             self.btn_guardar.setText("Solo Lectura")
             self.btn_eliminar.setToolTip("Sin Permisos")
             
-        for widget in self.findChildren(QLineEdit): 
-            if widget != self.txt_buscar:
-                widget.setEnabled(activo)
-                
+        for widget in self.findChildren(QLineEdit): widget.setEnabled(activo)
         for widget in self.findChildren(QComboBox): widget.setEnabled(activo)
         for widget in self.findChildren(QCheckBox): widget.setEnabled(activo)
         for widget in self.findChildren(QTextEdit): widget.setEnabled(activo)
@@ -277,7 +260,7 @@ class ProveedorForm(QWidget):
         
         if activo and self.cod_proveedor_seleccionado is not None:
             self.btn_eliminar.setEnabled(True)
-            self.txt_cod_proveedor.setReadOnly(True) 
+            self.txt_cod_proveedor.setReadOnly(True) # No se cambia la PK
         else:
             self.btn_eliminar.setEnabled(False)
             self.txt_cod_proveedor.setReadOnly(False)
@@ -287,10 +270,7 @@ class ProveedorForm(QWidget):
         self.lbl_titulo_form.setText("Seleccione un proveedor o cree uno nuevo")
         self.lista_proveedores.clearSelection()
         
-        for widget in self.findChildren(QLineEdit): 
-            if widget != self.txt_buscar: 
-                widget.clear()
-                
+        for widget in self.findChildren(QLineEdit): widget.clear()
         for widget in self.findChildren(QTextEdit): widget.clear()
         self.chk_estatus.setChecked(True)
         self.chk_contrib_iva.setChecked(True)
@@ -313,26 +293,10 @@ class ProveedorForm(QWidget):
     # --- LÓGICA DE BASE DE DATOS ---
     def cargar_lista_proveedores(self):
         self.lista_proveedores.clear()
-        filtro = self.txt_buscar.text().strip() if hasattr(self, 'txt_buscar') else ""
-        
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            if filtro:
-                query = """
-                    SELECT cod_proveedor, nombre_proveedor, rif 
-                    FROM maestro_proveedores 
-                    WHERE cod_compania = %s AND 
-                          (nombre_proveedor ILIKE %s OR rif ILIKE %s)
-                    ORDER BY nombre_proveedor
-                """
-                patron = f"%{filtro}%"
-                cur.execute(query, (self.cod_compania, patron, patron))
-            else:
-                query = "SELECT cod_proveedor, nombre_proveedor, rif FROM maestro_proveedores WHERE cod_compania = %s ORDER BY nombre_proveedor"
-                cur.execute(query, (self.cod_compania,))
-                
+            cur.execute("SELECT cod_proveedor, nombre_proveedor, rif FROM maestro_proveedores WHERE cod_compania = %s ORDER BY nombre_proveedor", (self.cod_compania,))
             for p in cur.fetchall():
                 self.lista_proveedores.addItem(f"{p[1]} ({p[2]})")
                 self.lista_proveedores.item(self.lista_proveedores.count()-1).setData(Qt.ItemDataRole.UserRole, p[0])
@@ -343,7 +307,7 @@ class ProveedorForm(QWidget):
     def cargar_datos_formulario(self, item):
         cod_prov = item.data(Qt.ItemDataRole.UserRole)
         self.cod_proveedor_seleccionado = cod_prov
-        self.lbl_titulo_form.setText("Cargando datos...") 
+        self.lbl_titulo_form.setText(f"Editando Proveedor: {cod_prov}")
         
         try:
             conn = psycopg2.connect(**DB_PARAMS)
@@ -366,10 +330,6 @@ class ProveedorForm(QWidget):
             conn.close()
             
             if d:
-                # --- AQUÍ SE ACTUALIZA EL TÍTULO CON EL CÓDIGO Y EL NOMBRE ---
-                nombre_proveedor = d[3] or "Sin Nombre"
-                self.lbl_titulo_form.setText(f"Editando Proveedor: {cod_prov} - {nombre_proveedor}")
-                
                 self.txt_cod_proveedor.setText(cod_prov)
                 self.cmb_tipo_prov.setCurrentText(d[0] or "")
                 self.txt_rif.setText(d[1] or "")
@@ -451,6 +411,7 @@ class ProveedorForm(QWidget):
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
             
+            # MAGIA: Zona Horaria Venezuela
             cur.execute("SET TIME ZONE 'America/Caracas'")
             
             if self.cod_proveedor_seleccionado is None:

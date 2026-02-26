@@ -1,7 +1,5 @@
 import sys
 import os
-import tempfile 
-import stat # <--- NUEVO IMPORT PARA CAMBIAR PERMISOS A "SOLO LECTURA"
 import psycopg2
 import hashlib
 import re
@@ -10,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QCheckBox, QComboBox, QMessageBox, QListWidget, 
     QFrame, QApplication, QFormLayout, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QMenu
+    QHeaderView, QMenu, QFileDialog # <--- IMPORTAMOS QFileDialog
 )
 from PyQt6.QtGui import QFont, QPalette, QColor
 from PyQt6.QtCore import Qt
@@ -217,7 +215,6 @@ class UsuariosForm(QWidget):
         btns_layout.addStretch()
         
         self.btn_eliminar = QPushButton("Eliminar Usuario")
-        self.btn_eliminar.setFixedHeight(45)
         self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
         self.btn_eliminar.clicked.connect(self.eliminar_usuario)
         btns_layout.addWidget(self.btn_eliminar)
@@ -233,18 +230,6 @@ class UsuariosForm(QWidget):
         self.btn_guardar.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
         self.btn_guardar.clicked.connect(self.guardar_usuario)
         btns_layout.addWidget(self.btn_guardar)
-
-        # --- BOTÓN DE SALIR ---
-        self.btn_salir = QPushButton("Salir")
-        self.btn_salir.setFixedHeight(45)
-        self.btn_salir.setStyleSheet("background-color: #343a40; color: white; font-weight: bold;")
-        self.btn_salir.clicked.connect(self.close)
-        btns_layout.addWidget(self.btn_salir)
-
-        if self.rol_usuario_sesion != "Administrador":
-            self.btn_guardar.setEnabled(False)
-            self.btn_eliminar.setEnabled(False)
-            self.btn_nuevo.setEnabled(False)
 
         right_panel.addLayout(btns_layout)
         main_layout.addLayout(right_panel)
@@ -401,10 +386,8 @@ class UsuariosForm(QWidget):
                 self.cmb_rol.setCurrentText(data[3] or "Operador")
                 self.chk_activo.setChecked(data[4])
                 
-                # --- CORRECCIÓN ZONA HORARIA Y FORMATO AM/PM ---
-                f_crea = data[6].strftime("%d/%m/%Y %I:%M %p") if data[6] else "-"
-                f_mod = data[8].strftime("%d/%m/%Y %I:%M %p") if data[8] else "-"
-                
+                f_crea = str(data[6])[:16] if data[6] else "-"
+                f_mod = str(data[8])[:16] if data[8] else "-"
                 self.lbl_audit.setText(f"Crea: {data[5] or '-'} ({f_crea}) | Mod: {data[7] or '-'} ({f_mod})")
                 self.txt_pass1.clear(); self.txt_pass2.clear()
 
@@ -470,10 +453,6 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            # --- CORRECCIÓN: ESTABLECER LA ZONA HORARIA ANTES DE GUARDAR ---
-            cur.execute("SET TIME ZONE 'America/Caracas'")
-            
             new_id = self.id_usuario_seleccionado
             
             if new_id is None:
@@ -553,7 +532,7 @@ class UsuariosForm(QWidget):
                 QMessageBox.critical(self, "Error", "No se puede eliminar (posiblemente tenga registros asociados).")
 
     # ==========================================
-    # LÓGICA DE EXPORTACIÓN Y REPORTES (TEMPORALES)
+    # LÓGICA DE EXPORTACIÓN Y REPORTES (MODIFICADA)
     # ==========================================
     def preparar_reporte(self, formato):
         if not self.id_usuario_seleccionado:
@@ -604,10 +583,15 @@ class UsuariosForm(QWidget):
             import subprocess
             subprocess.call(["xdg-open", filepath])
 
+    # --- CAMBIOS AQUI: SE PIDE AL USUARIO DÓNDE GUARDAR ---
+
     def generar_pdf(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.pdf")
+        default_name = f"Reporte_Usuario_{u_data[0]}.pdf"
+        # Abre ventana para elegir donde guardar
+        filepath, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte PDF", default_name, "Archivos PDF (*.pdf)")
+        
+        if not filepath:
+            return # El usuario canceló la ventana de guardar
             
         doc = SimpleDocTemplate(filepath, pagesize=letter)
         elementos = []
@@ -619,7 +603,7 @@ class UsuariosForm(QWidget):
         estilo_texto = estilos['Normal']
 
         elementos.append(Paragraph("NEXUS ERP - Reporte de Seguridad", estilo_titulo))
-        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", estilo_texto))
+        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_texto))
         elementos.append(Spacer(1, 20))
 
         elementos.append(Paragraph("Datos de Identificación del Usuario", estilo_subtitulo))
@@ -676,16 +660,14 @@ class UsuariosForm(QWidget):
             elementos.append(Paragraph("No cuenta con privilegios en módulos.", estilo_texto))
 
         doc.build(elementos)
-        
-        # MAGIA: Hacer que el PDF sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
         self.abrir_archivo(filepath)
 
     def generar_excel(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.xlsx")
+        default_name = f"Reporte_Usuario_{u_data[0]}.xlsx"
+        filepath, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte Excel", default_name, "Archivos Excel (*.xlsx)")
+        
+        if not filepath:
+            return # El usuario canceló la ventana de guardar
             
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -701,7 +683,7 @@ class UsuariosForm(QWidget):
         ws['A1'].fill = fill_titulo
         ws.merge_cells('A1:F1')
         
-        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}"])
+        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"])
         ws.append([])
         
         ws.append(["DATOS DEL USUARIO"])
@@ -746,22 +728,20 @@ class UsuariosForm(QWidget):
         ws.column_dimensions['B'].width = 35
 
         wb.save(filepath)
-        
-        # MAGIA: Hacer que el Excel sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
         self.abrir_archivo(filepath)
 
     def generar_txt(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.txt")
+        default_name = f"Reporte_Usuario_{u_data[0]}.txt"
+        filepath, _ = QFileDialog.getSaveFileName(self, "Guardar Reporte TXT", default_name, "Documento de texto (*.txt)")
+        
+        if not filepath:
+            return # El usuario canceló la ventana de guardar
             
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write("=" * 60 + "\n")
             f.write(" NEXUS ERP - REPORTE DE SEGURIDAD\n")
             f.write("=" * 60 + "\n")
-            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}\n\n")
+            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n")
             
             f.write("--- DATOS DEL USUARIO ---\n")
             f.write(f"Login:            {u_data[0]}\n")
@@ -791,9 +771,6 @@ class UsuariosForm(QWidget):
             else:
                 f.write("No cuenta con privilegios en módulos.\n")
 
-        # MAGIA: Hacer que el TXT sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
         self.abrir_archivo(filepath)
 
 if __name__ == "__main__":

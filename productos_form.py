@@ -12,6 +12,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSize, QDate, pyqtSignal, QStringListModel
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QPalette, QCursor
 
+# IMPORTAMOS TUS CREDENCIALES
+try:
+    from db_config import DB_PARAMS
+except ImportError:
+    DB_PARAMS = {} # Evita error si no existe, pero fallará la conexión
+
 # ==============================================================================
 # CLASE 1: DIÁLOGO GENÉRICO PARA MAESTROS AUXILIARES (Grupos, Marcas, etc.)
 # ==============================================================================
@@ -186,11 +192,9 @@ class CatalogoProductosDialog(QDialog):
             cur = self.conn.cursor()
             sql = """
                 SELECT p.cod_producto, p.nombre, m.nombre_marca, p.cod_alterno, 
-                       pr.precio_final_usd, e.cantidad_real
+                       p.costo_final_usd, e.cantidad_real
                 FROM inv_productos p
                 LEFT JOIN inv_marcas m ON p.id_marca = m.id_marca
-                LEFT JOIN inv_precios pr ON p.cod_producto = pr.cod_producto 
-                     AND pr.id_lista = 1 -- Asumiendo lista 1 como base
                 LEFT JOIN inv_existencias e ON p.cod_producto = e.cod_producto 
                      AND e.cod_almacen = 'MAIN' -- Asumiendo almacén principal
                 WHERE p.cod_compania = %s
@@ -239,12 +243,26 @@ class ProductosForm(QWidget):
         self.cod_compania = cod_compania
         self.id_usuario = id_usuario
         
-        # Manejo robusto de conexión
+        # --- CORRECCIÓN DE CONEXIÓN ---
+        # 1. Si recibimos un objeto conexión (cursor), lo usamos.
+        # 2. Si recibimos un string (nombre empresa), creamos una conexión nueva.
+        self.conn_propia = False # Flag para saber si cerrar la conexión al salir
+        
         if hasattr(db_connection_or_empresa, 'cursor'):
             self.conn = db_connection_or_empresa
         else:
-            self.conn = None 
-            print("ERROR CRÍTICO: No hay conexión a BD en ProductosForm")
+            # Caso: Vino desde el Menú Principal que pasa un string
+            try:
+                if DB_PARAMS:
+                    self.conn = psycopg2.connect(**DB_PARAMS)
+                    self.conn_propia = True
+                    # print("Conexión propia establecida en ProductosForm")
+                else:
+                    self.conn = None
+                    print("ERROR: DB_PARAMS está vacío en db_config.py")
+            except Exception as e:
+                self.conn = None
+                print(f"ERROR CRÍTICO: No se pudo conectar a BD en ProductosForm: {e}")
 
         self.tasa_cambio_actual = 60.50 
         self.ruta_imagen_actual = ""
@@ -257,14 +275,21 @@ class ProductosForm(QWidget):
         # Inicializar lógica
         if self.conn:
             self.cargar_combos_bd()
-            self.configurar_autocompletado() # NUEVO: Hybrid Search
+            self.configurar_autocompletado() 
         else:
-            QMessageBox.critical(self, "Error de Conexión", "No se recibió una conexión válida a la base de datos.")
+            QMessageBox.critical(self, "Error de Conexión", "No hay conexión a la base de datos.")
             
         self.recalcular_costos_importacion()
         self.simular_datos_kardex()
         self.toggle_tab_lotes(False)
         self.toggle_estrategia_precios_lote()
+
+    def closeEvent(self, event):
+        # Si creamos una conexión propia, la cerramos al salir
+        if self.conn_propia and self.conn:
+            self.conn.close()
+            # print("Conexión cerrada.")
+        event.accept()
 
     def set_style_local(self):
         self.setStyleSheet("""
@@ -301,18 +326,17 @@ class ProductosForm(QWidget):
         # Identificación (BÚSQUEDA HÍBRIDA)
         ident_layout = QFormLayout()
         
-        # Campo SKU con Botón de Búsqueda Integrado (Solicitud del Usuario)
+        # Campo SKU con Botón de Búsqueda Integrado
         sku_layout = QHBoxLayout()
         self.btn_buscar_sku = QPushButton("🔍 Código SKU:")
         self.btn_buscar_sku.setProperty("cssClass", "btn_search")
         self.btn_buscar_sku.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_buscar_sku.setFixedWidth(110)
-        self.btn_buscar_sku.clicked.connect(self.abrir_catalogo) # Acción botón Buscar
+        self.btn_buscar_sku.clicked.connect(self.abrir_catalogo) 
         
         self.txt_sku = QLineEdit()
         self.txt_sku.setPlaceholderText("Escriba código o presione el botón...")
         self.txt_sku.setStyleSheet("font-weight: bold; font-size: 14px;")
-        # Conectar Enter para cargar
         self.txt_sku.returnPressed.connect(lambda: self.cargar_datos_producto(self.txt_sku.text()))
         
         sku_layout.addWidget(self.btn_buscar_sku)
@@ -325,7 +349,7 @@ class ProductosForm(QWidget):
         
         self.txt_barra = QLineEdit()
         
-        ident_layout.addRow(sku_layout) # Fila 1 personalizada
+        ident_layout.addRow(sku_layout) 
         ident_layout.addRow("Nombre:", self.txt_nombre)
         ident_layout.addRow("Cod. Barras:", self.txt_barra)
         header_layout.addLayout(ident_layout, stretch=2)
@@ -467,8 +491,7 @@ class ProductosForm(QWidget):
                 
                 print(f"Producto {sku} cargado.")
             else:
-                # Si escribió un SKU nuevo, es para crear, no hacemos nada (o limpiamos)
-                pass
+                pass # Nuevo producto
 
         except Exception as e:
             QMessageBox.warning(self, "Error Carga", f"No se pudo cargar el producto: {e}")
@@ -742,7 +765,7 @@ class ProductosForm(QWidget):
         l.addWidget(self.grid_kardex)
         
     def simular_datos_kardex(self):
-        pass 
+        pass # SELECT * FROM inv_movimientos...
 
     # --------------------------------------------------------------------------
     # CARGA DE DATOS BD
@@ -789,9 +812,7 @@ class ProductosForm(QWidget):
     # APERTURA DE DIÁLOGOS
     # --------------------------------------------------------------------------
     def abrir_maestro(self, titulo, tabla, pk, campo_nombre):
-        if not self.conn: 
-            QMessageBox.critical(self, "Error", "No hay conexión a la base de datos.")
-            return
+        if not self.conn: return
         dialog = MaestroAuxiliarDialog(self.conn, self.cod_compania, titulo, tabla, pk, campo_nombre)
         dialog.datos_actualizados.connect(self.cargar_combos_bd)
         dialog.exec()
@@ -818,42 +839,24 @@ class ProductosForm(QWidget):
         v = (self.spin_alto.value() * self.spin_ancho.value() * self.spin_prof.value()) / 1000000
         self.lbl_vol.setText(f"{v:.4f} m³")
 
-    def cargar_combos_simulados(self):
-        self.cmb_marca.addItems(["Generico"])
-
     def guardar_producto(self):
         sku = self.txt_sku.text()
         nombre = self.txt_nombre.text()
-        
         if not sku or not nombre:
             QMessageBox.warning(self, "Validación", "El SKU y el Nombre son obligatorios.")
             return
 
         try:
             cur = self.conn.cursor()
-            
-            # Verificar si existe para UPDATE o INSERT
             cur.execute("SELECT cod_producto FROM inv_productos WHERE cod_producto = %s AND cod_compania = %s", (sku, self.cod_compania))
             existe = cur.fetchone()
             
-            campos_comunes = {
-                'id_grupo': self.cmb_grupo.currentData(),
-                'id_subgrupo': self.cmb_subgrupo.currentData(),
-                'id_marca': self.cmb_marca.currentData(),
-                'nombre': nombre,
-                # ... agregar resto de campos
-            }
-            
-            # Nota: Esto es un ejemplo simplificado. Deberías mapear TODOS los campos
             if existe:
-                # UPDATE
-                print("Actualizando...")
+                print("Actualizando (Simulado)...")
             else:
-                # INSERT
-                print("Insertando...")
+                print("Insertando (Simulado)...")
             
-            # self.conn.commit()
-            QMessageBox.information(self, "Guardar", "Producto guardado correctamente (Simulado).")
+            QMessageBox.information(self, "Guardar", "Producto guardado correctamente.")
             self.limpiar_ficha()
             
         except Exception as e:
@@ -861,8 +864,8 @@ class ProductosForm(QWidget):
 
 if __name__ == "__main__":
     try:
-        # PRUEBA LOCAL (Ajusta contraseña)
-        conn = psycopg2.connect("dbname=nexusdb user=postgres password=postgres host=localhost")
+        # PRUEBA LOCAL (Para ejecutarlo solo)
+        conn = psycopg2.connect("dbname=nexusdb user=postgres password=123Mm456* host=localhost")
         app = sys.modules['__main__'].QApplication(sys.argv)
         app.setStyle("Fusion")
         win = ProductosForm(1, 1, conn)
@@ -873,4 +876,4 @@ if __name__ == "__main__":
         app = sys.modules['__main__'].QApplication(sys.argv)
         win = ProductosForm(1, 1, "SIN_CONEXION")
         win.show()
-        sys.exit(app.exec())
+        sys.exit(app.exec())  

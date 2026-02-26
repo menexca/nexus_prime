@@ -1,7 +1,5 @@
 import sys
 import os
-import tempfile 
-import stat # <--- NUEVO IMPORT PARA CAMBIAR PERMISOS A "SOLO LECTURA"
 import psycopg2
 import hashlib
 import re
@@ -40,6 +38,7 @@ class UsuariosForm(QWidget):
         self.init_ui()
         self.cargar_lista_usuarios()
         
+        # Iniciar con el formulario bloqueado hasta que se elija una acción
         self.cancelar_accion()
 
     def verificar_permisos(self):
@@ -172,6 +171,7 @@ class UsuariosForm(QWidget):
         header_perm.addWidget(QLabel("🛡️ Permisología del Sistema"))
         header_perm.addStretch()
         
+        # Atributos de los botones de marcar para controlarlos
         self.btn_all = QPushButton("Marcar Todo")
         self.btn_all.setFixedSize(90, 25)
         self.btn_all.setStyleSheet("font-size: 10px; background-color: #6c757d;")
@@ -216,8 +216,8 @@ class UsuariosForm(QWidget):
         
         btns_layout.addStretch()
         
+        # --- BOTONES DE ACCIÓN ---
         self.btn_eliminar = QPushButton("Eliminar Usuario")
-        self.btn_eliminar.setFixedHeight(45)
         self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
         self.btn_eliminar.clicked.connect(self.eliminar_usuario)
         btns_layout.addWidget(self.btn_eliminar)
@@ -234,18 +234,6 @@ class UsuariosForm(QWidget):
         self.btn_guardar.clicked.connect(self.guardar_usuario)
         btns_layout.addWidget(self.btn_guardar)
 
-        # --- BOTÓN DE SALIR ---
-        self.btn_salir = QPushButton("Salir")
-        self.btn_salir.setFixedHeight(45)
-        self.btn_salir.setStyleSheet("background-color: #343a40; color: white; font-weight: bold;")
-        self.btn_salir.clicked.connect(self.close)
-        btns_layout.addWidget(self.btn_salir)
-
-        if self.rol_usuario_sesion != "Administrador":
-            self.btn_guardar.setEnabled(False)
-            self.btn_eliminar.setEnabled(False)
-            self.btn_nuevo.setEnabled(False)
-
         right_panel.addLayout(btns_layout)
         main_layout.addLayout(right_panel)
         self.setLayout(main_layout)
@@ -253,8 +241,9 @@ class UsuariosForm(QWidget):
     # --- LÓGICA DE ESTADOS Y UI ---
 
     def set_estado_formulario(self, activo):
+        """Habilita o deshabilita la edición de los campos y botones"""
         if self.rol_usuario_sesion != "Administrador":
-            activo = False 
+            activo = False # Si no es admin, todo sigue bloqueado para edición
             
         self.txt_login.setEnabled(activo)
         self.txt_nombre.setEnabled(activo)
@@ -271,12 +260,14 @@ class UsuariosForm(QWidget):
         self.btn_guardar.setEnabled(activo)
         self.btn_cancelar.setEnabled(activo)
         
+        # El botón de eliminar solo se activa si hay un usuario seleccionado Y es admin
         if activo and self.id_usuario_seleccionado is not None:
             self.btn_eliminar.setEnabled(True)
         else:
             self.btn_eliminar.setEnabled(False)
 
     def cancelar_accion(self):
+        """Botón cancelar: limpia todo y bloquea la pantalla"""
         self.id_usuario_seleccionado = None
         self.lista_usuarios.clearSelection()
         self.txt_login.clear()
@@ -290,6 +281,7 @@ class UsuariosForm(QWidget):
         self.set_estado_formulario(False)
 
     def limpiar_formulario(self):
+        """Botón Nuevo Usuario"""
         self.id_usuario_seleccionado = None
         self.lista_usuarios.clearSelection()
         self.txt_login.clear()
@@ -300,7 +292,7 @@ class UsuariosForm(QWidget):
         self.txt_pass2.clear()
         self.lbl_audit.setText("Creando Nuevo Usuario...")
         self.cargar_estructura_arbol()
-        self.set_estado_formulario(True) 
+        self.set_estado_formulario(True) # Activa todo para escribir
 
     def hash_password(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
@@ -308,6 +300,8 @@ class UsuariosForm(QWidget):
     def validar_email(self, email):
         pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
         return re.match(pattern, email) is not None
+
+    # --- LÓGICA DE BASE DE DATOS Y ÁRBOL ---
 
     def cargar_lista_usuarios(self):
         self.lista_usuarios.clear()
@@ -363,6 +357,7 @@ class UsuariosForm(QWidget):
             print(f"Error cargando árbol: {e}")
 
     def marcar_arbol(self, estado):
+        """SOLUCIÓN CRASHEO: Usa bucles nativos en lugar de QTreeWidgetItemIterator"""
         for i in range(self.tree_permisos.topLevelItemCount()):
             cat_item = self.tree_permisos.topLevelItem(i)
             for j in range(cat_item.childCount()):
@@ -401,10 +396,8 @@ class UsuariosForm(QWidget):
                 self.cmb_rol.setCurrentText(data[3] or "Operador")
                 self.chk_activo.setChecked(data[4])
                 
-                # --- CORRECCIÓN ZONA HORARIA Y FORMATO AM/PM ---
-                f_crea = data[6].strftime("%d/%m/%Y %I:%M %p") if data[6] else "-"
-                f_mod = data[8].strftime("%d/%m/%Y %I:%M %p") if data[8] else "-"
-                
+                f_crea = str(data[6])[:16] if data[6] else "-"
+                f_mod = str(data[8])[:16] if data[8] else "-"
                 self.lbl_audit.setText(f"Crea: {data[5] or '-'} ({f_crea}) | Mod: {data[7] or '-'} ({f_mod})")
                 self.txt_pass1.clear(); self.txt_pass2.clear()
 
@@ -414,6 +407,7 @@ class UsuariosForm(QWidget):
             
             mapa_permisos = { row[0]: row[1:] for row in permisos_db }
 
+            # SOLUCIÓN CRASHEO EN CARGA: Bucle nativo seguro
             for i in range(self.tree_permisos.topLevelItemCount()):
                 cat_item = self.tree_permisos.topLevelItem(i)
                 for j in range(cat_item.childCount()):
@@ -428,7 +422,7 @@ class UsuariosForm(QWidget):
                                 chk = container.findChild(QCheckBox)
                                 if chk: chk.setChecked(vals[col])
 
-            self.set_estado_formulario(True) 
+            self.set_estado_formulario(True) # Activamos la edición tras cargar con éxito
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error cargando usuario: {str(e)}")
@@ -470,10 +464,6 @@ class UsuariosForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            # --- CORRECCIÓN: ESTABLECER LA ZONA HORARIA ANTES DE GUARDAR ---
-            cur.execute("SET TIME ZONE 'America/Caracas'")
-            
             new_id = self.id_usuario_seleccionado
             
             if new_id is None:
@@ -502,6 +492,7 @@ class UsuariosForm(QWidget):
             
             cur.execute("DELETE FROM sys_permisouser WHERE id_usuario = %s", (new_id,))
             
+            # SOLUCIÓN CRASHEO EN GUARDADO: Bucle nativo seguro
             for i in range(self.tree_permisos.topLevelItemCount()):
                 cat_item = self.tree_permisos.topLevelItem(i)
                 for j in range(cat_item.childCount()):
@@ -527,7 +518,7 @@ class UsuariosForm(QWidget):
             conn.commit()
             conn.close()
             QMessageBox.information(self, "Éxito", "Usuario guardado correctamente.")
-            self.cancelar_accion() 
+            self.cancelar_accion() # Resetea y bloquea pantalla
             self.cargar_lista_usuarios()
             
         except Exception as e:
@@ -552,8 +543,9 @@ class UsuariosForm(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", "No se puede eliminar (posiblemente tenga registros asociados).")
 
+
     # ==========================================
-    # LÓGICA DE EXPORTACIÓN Y REPORTES (TEMPORALES)
+    # LÓGICA DE EXPORTACIÓN Y REPORTES
     # ==========================================
     def preparar_reporte(self, formato):
         if not self.id_usuario_seleccionado:
@@ -605,11 +597,8 @@ class UsuariosForm(QWidget):
             subprocess.call(["xdg-open", filepath])
 
     def generar_pdf(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.pdf")
-            
-        doc = SimpleDocTemplate(filepath, pagesize=letter)
+        pdf_filename = f"Reporte_Usuario_{u_data[0]}.pdf"
+        doc = SimpleDocTemplate(pdf_filename, pagesize=letter)
         elementos = []
         estilos = getSampleStyleSheet()
         
@@ -619,7 +608,7 @@ class UsuariosForm(QWidget):
         estilo_texto = estilos['Normal']
 
         elementos.append(Paragraph("NEXUS ERP - Reporte de Seguridad", estilo_titulo))
-        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}", estilo_texto))
+        elementos.append(Paragraph(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", estilo_texto))
         elementos.append(Spacer(1, 20))
 
         elementos.append(Paragraph("Datos de Identificación del Usuario", estilo_subtitulo))
@@ -676,17 +665,11 @@ class UsuariosForm(QWidget):
             elementos.append(Paragraph("No cuenta con privilegios en módulos.", estilo_texto))
 
         doc.build(elementos)
-        
-        # MAGIA: Hacer que el PDF sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
-        self.abrir_archivo(filepath)
+        self.abrir_archivo(pdf_filename)
 
     def generar_excel(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.xlsx")
-            
+        excel_filename = f"Reporte_Usuario_{u_data[0]}.xlsx"
+        
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Reporte de Seguridad"
@@ -701,7 +684,7 @@ class UsuariosForm(QWidget):
         ws['A1'].fill = fill_titulo
         ws.merge_cells('A1:F1')
         
-        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}"])
+        ws.append([f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"])
         ws.append([])
         
         ws.append(["DATOS DEL USUARIO"])
@@ -745,23 +728,17 @@ class UsuariosForm(QWidget):
         ws.column_dimensions['A'].width = 25
         ws.column_dimensions['B'].width = 35
 
-        wb.save(filepath)
-        
-        # MAGIA: Hacer que el Excel sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
-        self.abrir_archivo(filepath)
+        wb.save(excel_filename)
+        self.abrir_archivo(excel_filename)
 
     def generar_txt(self, u_data, e_data, p_data):
-        temp_dir = tempfile.gettempdir()
-        timestamp = datetime.now().strftime('%H%M%S')
-        filepath = os.path.join(temp_dir, f"Reporte_Usuario_{u_data[0]}_{timestamp}.txt")
-            
-        with open(filepath, 'w', encoding='utf-8') as f:
+        txt_filename = f"Reporte_Usuario_{u_data[0]}.txt"
+        
+        with open(txt_filename, 'w', encoding='utf-8') as f:
             f.write("=" * 60 + "\n")
             f.write(" NEXUS ERP - REPORTE DE SEGURIDAD\n")
             f.write("=" * 60 + "\n")
-            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %I:%M %p')}\n\n")
+            f.write(f"Fecha de Emisión: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n")
             
             f.write("--- DATOS DEL USUARIO ---\n")
             f.write(f"Login:            {u_data[0]}\n")
@@ -791,10 +768,7 @@ class UsuariosForm(QWidget):
             else:
                 f.write("No cuenta con privilegios en módulos.\n")
 
-        # MAGIA: Hacer que el TXT sea de Solo Lectura
-        os.chmod(filepath, stat.S_IREAD)
-        
-        self.abrir_archivo(filepath)
+        self.abrir_archivo(txt_filename)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
