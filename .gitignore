@@ -1,0 +1,23 @@
+# 1. Crear el .gitignore para excluir todas las carpetas y archivos no deseados de la raíz
+@"
+# Ignorar TODAS las carpetas
+*/
+
+# Ignorar archivos basura o sensibles en la raíz
+desktop.ini
+.env
+*.enc
+*.enclaptop
+*.zip
+*.sql
+*.backup
+"@ | Out-File .gitignore -Encoding utf8
+
+# 2. Hacer que Git olvide todo temporalmente de su caché (Tranquilo, esto NO borra tus archivos reales)
+git rm -r --cached .
+
+# 3. Volver a agregar los archivos (ahora Git respetará la regla de ignorar las carpetas)
+git add .
+
+# 4. Verificar el resultado
+git status

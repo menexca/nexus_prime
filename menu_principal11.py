@@ -1,7 +1,7 @@
 import sys
 import psycopg2
-import subprocess # Para llamar a la calculadora
-from datetime import datetime # Para la fecha y hora
+import subprocess 
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLabel, QFrame, QMessageBox, QGridLayout, QStackedWidget, 
@@ -16,21 +16,31 @@ from proveedores_form import ProveedorForm
 from productos_form import ProductosForm
 from empresas_form import EmpresasForm
 from usuarios_form import UsuariosForm
+# --- NUEVOS MÓDULOS ---
+from almacenes_form import AlmacenesForm
+from tarifas_form import TarifasForm
+from impuestos_form import ImpuestosForm
+from compras_form import ComprasForm  # <--- IMPORTACIÓN DEL NUEVO MÓDULO
 
 class MenuPrincipal(QMainWindow):
-    def __init__(self, cod_compania, id_usuario, nombre_empresa, rol_usuario):
+    def __init__(self, cod_compania, id_usuario, nombre_empresa, rol_usuario, nombre_real_usuario):
         super().__init__()
         
         self.cod_compania = cod_compania
         self.id_usuario = id_usuario
         self.nombre_empresa = nombre_empresa
         self.rol_usuario = rol_usuario
+        self.nombre_mostrar = nombre_real_usuario 
         
-        # Referencias a ventanas (Singleton pattern)
+        # Instancias de ventanas
         self.ventana_proveedores = None
         self.ventana_productos = None
         self.ventana_empresas = None
         self.ventana_usuarios = None
+        self.ventana_almacenes = None
+        self.ventana_tarifas = None
+        self.ventana_impuestos = None
+        self.ventana_compras = None  # <--- INSTANCIA DE LA VENTANA DE COMPRAS
         
         self.permisos_activos = []
 
@@ -40,10 +50,9 @@ class MenuPrincipal(QMainWindow):
         self.cargar_permisos_usuario() 
         self.init_ui()
         
-        # Iniciar el reloj
         self.timer_reloj = QTimer(self)
         self.timer_reloj.timeout.connect(self.actualizar_reloj)
-        self.timer_reloj.start(1000) # Actualizar cada segundo
+        self.timer_reloj.start(1000) 
         self.actualizar_reloj()
 
     def cargar_permisos_usuario(self):
@@ -77,7 +86,6 @@ class MenuPrincipal(QMainWindow):
         self.setStyleSheet("""
             QMainWindow { background-color: #F0F2F5; }
             
-            /* SIDEBAR IZQUIERDO */
             QWidget#Sidebar { background-color: #2C3E50; border-right: 1px solid #1a252f; }
             QLabel#Logo { color: white; font-size: 22px; font-weight: bold; padding: 20px; }
             
@@ -102,7 +110,6 @@ class MenuPrincipal(QMainWindow):
                 background-color: #c0392b; color: white; border-radius: 4px; padding: 10px; font-weight: bold;
             }
 
-            /* DASHBOARD DERECHO */
             QPushButton.dashboard_card {
                 background-color: white;
                 border: 1px solid #E0E0E0;
@@ -116,27 +123,26 @@ class MenuPrincipal(QMainWindow):
                 background-color: #F4F6F7;
                 border: 1px solid #3498DB;
                 color: #2980B9;
-                margin-top: -3px; /* Efecto de elevación */
+                margin-top: -3px; 
             }
             
             QLabel.page_title {
                 color: #2C3E50; font-size: 24px; font-weight: bold; margin-bottom: 20px;
             }
             
-            /* FOOTER */
             QFrame#Footer { background-color: #FFFFFF; border-top: 1px solid #DDD; }
             QLabel#ClockLabel { font-size: 16px; font-weight: bold; color: #555; }
             QLabel#DateLabel { font-size: 14px; color: #777; }
+            
             QPushButton#CalcBtn {
                 background-color: #27AE60; 
                 color: white; 
-                border-radius: 20px; /* La mitad del tamaño (45) para que sea redondo */
-                font-size: 40px; /* Tamaño ideal para que se vea grande pero centrado */
+                border-radius: 22px; 
+                font-size: 24px; 
                 border: 2px solid #2ECC71;
-                padding-bottom: 4px; /* Ajuste fino para elevar visualmente el emoji */
+                padding-bottom: 3px; 
             }
-            QPushButton#CalcBtn:hover { background-color: #D68910; }
-            
+            QPushButton#CalcBtn:hover { background-color: #229954; }
         """)
 
         central_widget = QWidget()
@@ -145,9 +151,7 @@ class MenuPrincipal(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # =======================================================
-        # 1. SIDEBAR (IZQUIERDA) - CATEGORÍAS
-        # =======================================================
+        # --- SIDEBAR ---
         sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(260)
@@ -163,11 +167,10 @@ class MenuPrincipal(QMainWindow):
         line.setStyleSheet("color: #7f8c8d;")
         sidebar_layout.addWidget(line)
 
-        # -- Botones de Categoría (Checkable para efecto de selección) --
         self.btn_cat_ops = QPushButton("📊  Operaciones y Logística")
         self.btn_cat_ops.setProperty("class", "menu_cat_btn")
         self.btn_cat_ops.setCheckable(True)
-        self.btn_cat_ops.setChecked(True) # Por defecto activo
+        self.btn_cat_ops.setChecked(True) 
         self.btn_cat_ops.clicked.connect(lambda: self.cambiar_pagina(0))
         sidebar_layout.addWidget(self.btn_cat_ops)
         
@@ -177,8 +180,13 @@ class MenuPrincipal(QMainWindow):
         self.btn_cat_adm.clicked.connect(lambda: self.cambiar_pagina(1))
         sidebar_layout.addWidget(self.btn_cat_adm)
 
-        # Grupo exclusivo para los botones (solo uno activo a la vez visualmente)
-        self.btn_group = [self.btn_cat_ops, self.btn_cat_adm]
+        self.btn_cat_cfg = QPushButton("🛠️  Configuración y Tablas")
+        self.btn_cat_cfg.setProperty("class", "menu_cat_btn")
+        self.btn_cat_cfg.setCheckable(True)
+        self.btn_cat_cfg.clicked.connect(lambda: self.cambiar_pagina(2))
+        sidebar_layout.addWidget(self.btn_cat_cfg)
+
+        self.btn_group = [self.btn_cat_ops, self.btn_cat_adm, self.btn_cat_cfg]
 
         sidebar_layout.addStretch()
 
@@ -190,9 +198,7 @@ class MenuPrincipal(QMainWindow):
 
         main_layout.addWidget(sidebar)
 
-        # =======================================================
-        # 2. ÁREA CENTRAL (DERECHA) - STACKED WIDGET
-        # =======================================================
+        # --- AREA CENTRAL ---
         content_area = QWidget()
         content_layout = QVBoxLayout(content_area)
         content_layout.setContentsMargins(0,0,0,0)
@@ -204,7 +210,7 @@ class MenuPrincipal(QMainWindow):
         top_bar_layout = QHBoxLayout(top_bar)
         top_bar_layout.setContentsMargins(20, 10, 20, 10)
         
-        lbl_welcome = QLabel(f"Usuario: <b>{self.id_usuario}</b> | Rol: <span style='color:#2980B9'>{self.rol_usuario}</span>")
+        lbl_welcome = QLabel(f"Usuario: <b>{self.nombre_mostrar}</b> | Rol: <span style='color:#2980B9'>{self.rol_usuario}</span>")
         lbl_welcome.setStyleSheet("font-size: 14px; color: #555;")
         lbl_empresa = QLabel(f"{self.nombre_empresa.upper()}")
         lbl_empresa.setStyleSheet("color: #2C3E50; font-size: 16px; font-weight: bold;")
@@ -214,15 +220,13 @@ class MenuPrincipal(QMainWindow):
         top_bar_layout.addWidget(lbl_empresa)
         content_layout.addWidget(top_bar)
         
-        # --- STACKED WIDGET (El contenedor que cambia) ---
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.setStyleSheet("background-color: #F0F2F5;")
         
-        # PÁGINA 0: OPERACIONES Y LOGÍSTICA
+        # --- Pagina 0: OPERACIONES ---
         page_ops = QWidget()
         layout_ops = QVBoxLayout(page_ops)
         layout_ops.setContentsMargins(40, 40, 40, 40)
-        
         lbl_ops_title = QLabel("Operaciones y Logística")
         lbl_ops_title.setProperty("class", "page_title")
         layout_ops.addWidget(lbl_ops_title)
@@ -230,26 +234,32 @@ class MenuPrincipal(QMainWindow):
         grid_ops = QGridLayout()
         grid_ops.setSpacing(25)
         
+        col_ops_idx = 0
         if self.tiene_permiso("Productos / Inventario"):
             btn_prod = self.crear_boton_dashboard("📦", "Inventario", "Productos y Stock", self.abrir_productos)
-            grid_ops.addWidget(btn_prod, 0, 0)
+            grid_ops.addWidget(btn_prod, 0, col_ops_idx)
+            col_ops_idx += 1
             
         if self.tiene_permiso("Proveedores"):
-            btn_prov = self.crear_boton_dashboard("🚛", "Proveedores", "Gestión de Compras", self.abrir_proveedores)
-            grid_ops.addWidget(btn_prov, 0, 1)
+            btn_prov = self.crear_boton_dashboard("🚛", "Proveedores", "Maestro Proveedores", self.abrir_proveedores)
+            grid_ops.addWidget(btn_prov, 0, col_ops_idx)
+            col_ops_idx += 1
+
+        # --- BOTÓN DE COMPRAS AGREGADO AQUÍ ---
+        if self.tiene_permiso("Compras (Ingresos)"):
+            btn_compras = self.crear_boton_dashboard("🛒", "Compras", "Registro de Facturas", self.abrir_compras)
+            grid_ops.addWidget(btn_compras, 0, col_ops_idx)
+            col_ops_idx += 1
             
-        # Espaciadores para mantener el grid a la izquierda
-        grid_ops.addItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 0, 2)
-        grid_ops.setRowStretch(1, 1) # Empujar hacia arriba
-        
+        grid_ops.addItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 0, col_ops_idx)
+        grid_ops.setRowStretch(1, 1)
         layout_ops.addLayout(grid_ops)
         self.stacked_widget.addWidget(page_ops)
         
-        # PÁGINA 1: ADMINISTRACIÓN DEL SISTEMA
+        # --- Pagina 1: ADMINISTRACIÓN ---
         page_adm = QWidget()
         layout_adm = QVBoxLayout(page_adm)
         layout_adm.setContentsMargins(40, 40, 40, 40)
-        
         lbl_adm_title = QLabel("Administración del Sistema")
         lbl_adm_title.setProperty("class", "page_title")
         layout_adm.addWidget(lbl_adm_title)
@@ -270,45 +280,55 @@ class MenuPrincipal(QMainWindow):
             
         grid_adm.addItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 0, col_idx)
         grid_adm.setRowStretch(1, 1)
-        
         layout_adm.addLayout(grid_adm)
         self.stacked_widget.addWidget(page_adm)
+
+        # --- Pagina 2: CONFIGURACIÓN Y TABLAS ---
+        page_cfg = QWidget()
+        layout_cfg = QVBoxLayout(page_cfg)
+        layout_cfg.setContentsMargins(40, 40, 40, 40)
+        lbl_cfg_title = QLabel("Configuración Global y Tablas Auxiliares")
+        lbl_cfg_title.setProperty("class", "page_title")
+        layout_cfg.addWidget(lbl_cfg_title)
+        
+        grid_cfg = QGridLayout()
+        grid_cfg.setSpacing(25)
+        
+        btn_alm = self.crear_boton_dashboard("🏢", "Almacenes", "Gestión de Depósitos", self.abrir_almacenes)
+        grid_cfg.addWidget(btn_alm, 0, 0)
+
+        btn_tar = self.crear_boton_dashboard("💰", "Tarifas de Precios", "Listas y Márgenes", self.abrir_tarifas)
+        grid_cfg.addWidget(btn_tar, 0, 1)
+
+        btn_imp = self.crear_boton_dashboard("⚖️", "Impuestos", "Tasas y Retenciones", self.abrir_impuestos)
+        grid_cfg.addWidget(btn_imp, 0, 2)
+
+        grid_cfg.addItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 0, 3)
+        grid_cfg.setRowStretch(1, 1)
+        layout_cfg.addLayout(grid_cfg)
+        self.stacked_widget.addWidget(page_cfg)
         
         content_layout.addWidget(self.stacked_widget)
 
-        # =======================================================
-        # 3. FOOTER (ABAJO) - FECHA, RELOJ, CALCULADORA
-        # =======================================================
+        # --- FOOTER ---
         footer = QFrame()
         footer.setObjectName("Footer")
         footer.setFixedHeight(50)
         footer_layout = QHBoxLayout(footer)
         footer_layout.setContentsMargins(20, 0, 20, 0)
         
-        # Fecha
         self.lbl_fecha = QLabel("Fecha: -")
         self.lbl_fecha.setObjectName("DateLabel")
         
-        # Reloj
         self.lbl_reloj = QLabel("00:00:00")
         self.lbl_reloj.setObjectName("ClockLabel")
         
-        # Botón Calculadora
-        btn_calc = QPushButton("🖩") # Icono más claro (Pocket Calculator)
+        btn_calc = QPushButton("🖩") 
         btn_calc.setObjectName("CalcBtn")
-        btn_calc.setFixedSize(40, 40) # Un poco más grande para facilitar el clic
+        btn_calc.setFixedSize(45, 45) 
         btn_calc.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         btn_calc.setToolTip("Abrir Calculadora")
         btn_calc.clicked.connect(self.abrir_calculadora)
-
-
-
-        #btn_calc = QPushButton("🧮")
-        #btn_calc.setObjectName("CalcBtn")
-        #btn_calc.setFixedSize(35, 35)
-        #btn_calc.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        #btn_calc.setToolTip("Abrir Calculadora de Windows")
-        #btn_calc.clicked.connect(self.abrir_calculadora)
         
         footer_layout.addWidget(self.lbl_fecha)
         footer_layout.addSpacing(20)
@@ -317,16 +337,12 @@ class MenuPrincipal(QMainWindow):
         footer_layout.addWidget(btn_calc)
         
         content_layout.addWidget(footer)
-        
         main_layout.addWidget(content_area)
 
-    # --- LÓGICA UI ---
+    # --- FUNCIONES ---
     
     def cambiar_pagina(self, indice):
-        """Cambia la página del StackedWidget y actualiza el estilo de los botones laterales"""
         self.stacked_widget.setCurrentIndex(indice)
-        
-        # Actualizar estado visual de los botones
         for i, btn in enumerate(self.btn_group):
             btn.setChecked(i == indice)
 
@@ -347,9 +363,7 @@ class MenuPrincipal(QMainWindow):
 
     def actualizar_reloj(self):
         ahora = datetime.now()
-       # self.lbl_reloj.setText(ahora.strftime("%H:%M:%S"))  ##24 Horas
-        self.lbl_reloj.setText(ahora.strftime("%I:%M:%S %p"))  ##12 horas
-        # Fecha en formato: Lunes, 02 de Enero 2026
+        self.lbl_reloj.setText(ahora.strftime("%I:%M:%S %p"))
         dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
         fecha_str = f"{dias[ahora.weekday()]}, {ahora.day} de {meses[ahora.month-1]} {ahora.year}"
@@ -357,32 +371,55 @@ class MenuPrincipal(QMainWindow):
 
     def abrir_calculadora(self):
         try:
-            # Comando universal para calculadora de Windows
             subprocess.Popen('calc.exe')
         except Exception as e:
             QMessageBox.warning(self, "Error", f"No se pudo abrir la calculadora: {e}")
 
-    # --- ACCIONES DE MÓDULOS ---
     def abrir_proveedores(self):
         if self.ventana_proveedores is None or not self.ventana_proveedores.isVisible():
             self.ventana_proveedores = ProveedorForm(self.cod_compania, self.id_usuario, self.nombre_empresa)
-            self.ventana_proveedores.show()
+            self.ventana_proveedores.showMaximized()
         else: self.ventana_proveedores.activateWindow()
 
     def abrir_productos(self):
         if self.ventana_productos is None or not self.ventana_productos.isVisible():
             self.ventana_productos = ProductosForm(self.cod_compania, self.id_usuario, self.nombre_empresa)
-            self.ventana_productos.show()
+            self.ventana_productos.showMaximized()
         else: self.ventana_productos.activateWindow()
 
     def abrir_empresas(self):
         if self.ventana_empresas is None or not self.ventana_empresas.isVisible():
             self.ventana_empresas = EmpresasForm(self.id_usuario)
-            self.ventana_empresas.show()
+            self.ventana_empresas.showMaximized()
         else: self.ventana_empresas.activateWindow()
 
     def abrir_usuarios(self):
         if self.ventana_usuarios is None or not self.ventana_usuarios.isVisible():
             self.ventana_usuarios = UsuariosForm(self.id_usuario)
-            self.ventana_usuarios.show()
+            self.ventana_usuarios.showMaximized()
         else: self.ventana_usuarios.activateWindow()
+
+    def abrir_almacenes(self):
+        if self.ventana_almacenes is None or not self.ventana_almacenes.isVisible():
+            self.ventana_almacenes = AlmacenesForm(self.cod_compania, self.nombre_empresa)
+            self.ventana_almacenes.show()
+        else: self.ventana_almacenes.activateWindow()
+
+    def abrir_tarifas(self):
+        if getattr(self, 'ventana_tarifas', None) is None or not self.ventana_tarifas.isVisible():
+            self.ventana_tarifas = TarifasForm(self.cod_compania, self.nombre_empresa)
+            self.ventana_tarifas.show()
+        else: self.ventana_tarifas.activateWindow()
+
+    def abrir_impuestos(self):
+        if getattr(self, 'ventana_impuestos', None) is None or not self.ventana_impuestos.isVisible():
+            self.ventana_impuestos = ImpuestosForm(self.cod_compania, self.nombre_empresa)
+            self.ventana_impuestos.show()
+        else: self.ventana_impuestos.activateWindow()
+
+    # --- FUNCIÓN DEL NUEVO MÓDULO DE COMPRAS ---
+    def abrir_compras(self):
+        if self.ventana_compras is None or not self.ventana_compras.isVisible():
+            self.ventana_compras = ComprasForm(self.cod_compania, self.id_usuario, self.nombre_empresa)
+            self.ventana_compras.showMaximized()
+        else: self.ventana_compras.activateWindow()

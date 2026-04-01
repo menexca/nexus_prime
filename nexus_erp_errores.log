@@ -1,0 +1,175 @@
+2026-03-31 17:00:24 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 41, in wrapper
+    return func(self, *args, **kwargs)
+TypeError: AlmacenesForm.guardar_almacen() takes 1 positional argument but 2 were given
+
+2026-03-31 19:18:59 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 42, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 775, in anular_compra
+    cur.execute("""
+    ~~~~~~~~~~~^^^^
+        INSERT INTO inv_movimientos (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """, params_mov)
+    ^^^^^^^^^^^^^^^^
+psycopg2.errors.CheckViolation: new row for relation "inv_existencias" violates check constraint "chk_inv_existencias_positiva"
+DETAIL:  Failing row contains (1, MAIN, HPAN, null, null, null, -20.000, null, null, 2026-03-31 23:18:58.884031, null).
+CONTEXT:  SQL statement "INSERT INTO public.inv_existencias (cod_compania, cod_almacen, cod_producto, cantidad_real)
+        VALUES (NEW.cod_compania, NEW.cod_almacen, NEW.cod_producto, NEW.cantidad * v_factor_new)
+        ON CONFLICT (cod_compania, cod_almacen, cod_producto)
+        DO UPDATE SET cantidad_real = public.inv_existencias.cantidad_real + (NEW.cantidad * v_factor_new)"
+PL/pgSQL function fn_actualizar_existencias() line 22 at SQL statement
+
+
+2026-03-31 19:54:25 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 42, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 746, in anular_compra
+    cur.execute("""
+    ~~~~~~~~~~~^^^^
+        INSERT INTO inv_movimientos (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """, params_mov)
+    ^^^^^^^^^^^^^^^^
+psycopg2.errors.CheckViolation: new row for relation "inv_existencias" violates check constraint "chk_inv_existencias_positiva"
+DETAIL:  Failing row contains (1, MAIN, HPAN, null, null, null, -20.000, null, null, 2026-03-31 23:54:24.717612, null).
+CONTEXT:  SQL statement "INSERT INTO public.inv_existencias (cod_compania, cod_almacen, cod_producto, cantidad_real)
+        VALUES (NEW.cod_compania, NEW.cod_almacen, NEW.cod_producto, NEW.cantidad * v_factor_new)
+        ON CONFLICT (cod_compania, cod_almacen, cod_producto)
+        DO UPDATE SET cantidad_real = public.inv_existencias.cantidad_real + (NEW.cantidad * v_factor_new)"
+PL/pgSQL function fn_actualizar_existencias() line 22 at SQL statement
+
+
+2026-03-31 20:00:13 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 42, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 762, in anular_compra
+    cur.execute("""
+    ~~~~~~~~~~~^^^^
+        INSERT INTO inv_movimientos (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """, params_mov)
+    ^^^^^^^^^^^^^^^^
+psycopg2.errors.CheckViolation: new row for relation "inv_existencias" violates check constraint "chk_inv_existencias_positiva"
+DETAIL:  Failing row contains (1, MAIN, HPAN, null, null, null, -20.000, null, null, 2026-04-01 00:00:13.093543, null).
+CONTEXT:  SQL statement "INSERT INTO public.inv_existencias (cod_compania, cod_almacen, cod_producto, cantidad_real)
+        VALUES (NEW.cod_compania, NEW.cod_almacen, NEW.cod_producto, NEW.cantidad * v_factor_new)
+        ON CONFLICT (cod_compania, cod_almacen, cod_producto)
+        DO UPDATE SET cantidad_real = public.inv_existencias.cantidad_real + (NEW.cantidad * v_factor_new)"
+PL/pgSQL function fn_actualizar_existencias() line 22 at SQL statement
+
+
+2026-03-31 20:06:19 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 42, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 762, in anular_compra
+    cur.execute("""
+    ~~~~~~~~~~~^^^^
+        INSERT INTO inv_movimientos (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """, params_mov)
+    ^^^^^^^^^^^^^^^^
+psycopg2.errors.CheckViolation: new row for relation "inv_existencias" violates check constraint "chk_inv_existencias_positiva"
+DETAIL:  Failing row contains (1, MAIN, HPAN, null, null, null, -20.000, null, null, 2026-04-01 00:06:18.798057, null).
+CONTEXT:  SQL statement "INSERT INTO public.inv_existencias (cod_compania, cod_almacen, cod_producto, cantidad_real)
+        VALUES (NEW.cod_compania, NEW.cod_almacen, NEW.cod_producto, NEW.cantidad * v_factor_new)
+        ON CONFLICT (cod_compania, cod_almacen, cod_producto)
+        DO UPDATE SET cantidad_real = public.inv_existencias.cantidad_real + (NEW.cantidad * v_factor_new)"
+PL/pgSQL function fn_actualizar_existencias() line 22 at SQL statement
+
+
+2026-03-31 21:20:55 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 42, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 44, in verificar_permisos_usuario
+    with psycopg2.connect(**DB_PARAMS) as conn:
+         ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Users\mm\AppData\Roaming\Python\Python313\site-packages\psycopg2\__init__.py", line 135, in connect
+    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
+psycopg2.OperationalError: connection to server at "yamabiko.proxy.rlwy.net" (66.33.22.235), port 21666 failed: Connection timed out (0x0000274C/10060)
+	Is the server running on that host and accepting TCP/IP connections?
+
+
+2026-03-31 21:25:27 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 500, in cargar_combo_productos
+    cur.execute("SELECT cod_producto, nombre FROM inv_productos WHERE cod_compania = %s AND es_activo = TRUE ORDER BY nombre", (self.cod_compania,))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 42, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 498, in cargar_combo_productos
+    with psycopg2.connect(**DB_PARAMS) as conn:
+         ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+psycopg2.InterfaceError: connection already closed
+
+2026-03-31 21:32:09 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 541, in cargar_lista_compras
+    cur.execute(query, (self.cod_compania, patron, patron, patron))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.OperationalError: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 46, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 528, in cargar_lista_compras
+    with psycopg2.connect(**DB_PARAMS) as conn:
+         ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+psycopg2.InterfaceError: connection already closed
+
+2026-03-31 22:43:29 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 46, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 560, in cargar_combo_productos
+    self.cmb_producto.clear()
+    ^^^^^^^^^^^^^^^^^
+AttributeError: 'ComprasForm' object has no attribute 'cmb_producto'. Did you mean: 'tabla_productos'?
+
+2026-03-31 22:44:26 - error_handler - ERROR - Excepción capturada:
+Traceback (most recent call last):
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\error_handler.py", line 46, in wrapper
+    return func(self)
+  File "G:\.shortcut-targets-by-id\1fWs8lcIehOGq4_X5KSTtl1v_2hvHsmLK\Sistema - nexus prime\sesion\compras_form.py", line 590, in cargar_lista_compras
+    self.lista_compras.clear()
+    ^^^^^^^^^^^^^^^^^^
+AttributeError: 'ComprasForm' object has no attribute 'lista_compras'
+

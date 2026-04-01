@@ -192,17 +192,17 @@ class EmpresasForm(QWidget):
         self.arbol_usuarios.setColumnCount(1)
         layout_seg.addWidget(self.arbol_usuarios)
         
-        self.btn_todos = QPushButton("Marcar Todos")
-        self.btn_todos.setFixedSize(115, 27)
-        self.btn_todos.clicked.connect(lambda: self.marcar_usuarios(True))
+        btn_todos = QPushButton("Marcar Todos")
+        btn_todos.setFixedSize(100, 25)
+        btn_todos.clicked.connect(lambda: self.marcar_usuarios(True))
         
-        self.btn_ninguno = QPushButton("Desmarcar")
-        self.btn_ninguno.setFixedSize(105, 27)
-        self.btn_ninguno.clicked.connect(lambda: self.marcar_usuarios(False))
+        btn_ninguno = QPushButton("Desmarcar")
+        btn_ninguno.setFixedSize(100, 25)
+        btn_ninguno.clicked.connect(lambda: self.marcar_usuarios(False))
         
         layout_btns_seg = QHBoxLayout()
-        layout_btns_seg.addWidget(self.btn_todos)
-        layout_btns_seg.addWidget(self.btn_ninguno)
+        layout_btns_seg.addWidget(btn_todos)
+        layout_btns_seg.addWidget(btn_ninguno)
         layout_btns_seg.addStretch()
         layout_seg.addLayout(layout_btns_seg)
         
@@ -228,95 +228,33 @@ class EmpresasForm(QWidget):
         layout_audit.addWidget(self.lbl_fecha_mod)
         right_layout.addWidget(frm_audit)
 
-        # Botones Principales Inferiores
+        # Botones Principales
         btn_layout = QHBoxLayout()
-        
-        self.btn_eliminar = QPushButton("Eliminar Empresa")
+        self.btn_eliminar = QPushButton("Eliminar")
         self.btn_eliminar.setStyleSheet("background-color: #d9534f; color: white;")
-        self.btn_eliminar.setFixedHeight(40)
         self.btn_eliminar.clicked.connect(self.eliminar_empresa)
-        
-        self.btn_cancelar = QPushButton("Cancelar")
-        self.btn_cancelar.setStyleSheet("background-color: #6c757d; color: white;")
-        self.btn_cancelar.setFixedHeight(40)
-        self.btn_cancelar.clicked.connect(self.cancelar_accion)
         
         self.btn_guardar = QPushButton("Guardar Cambios")
         self.btn_guardar.setFixedHeight(40)
-        self.btn_guardar.setStyleSheet("background-color: #28a745; color: white; font-weight: bold;")
         self.btn_guardar.clicked.connect(self.guardar_empresa)
         
-        self.btn_salir = QPushButton("Salir")
-        self.btn_salir.setFixedHeight(40)
-        self.btn_salir.setStyleSheet("background-color: #343a40; color: white; font-weight: bold;")
-        self.btn_salir.clicked.connect(self.close)
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(self.btn_eliminar)
-        btn_layout.addWidget(self.btn_cancelar)
-        btn_layout.addWidget(self.btn_guardar)
-        btn_layout.addWidget(self.btn_salir)
-        
-        right_layout.addLayout(btn_layout)
-        main_layout.addLayout(right_layout)
-        self.setLayout(main_layout)
-
-    # --- LÓGICA DE ESTADOS Y UI ---
-
-    def set_estado_formulario(self, activo):
-        """Habilita o deshabilita los campos dependiendo de la acción"""
         if self.rol_usuario != "Administrador":
-            activo = False
+            self.btn_guardar.setEnabled(False)
+            self.btn_eliminar.setEnabled(False)
+            self.btn_nueva.setEnabled(False)
             self.btn_guardar.setText("Solo Lectura")
             self.btn_guardar.setToolTip("No tiene permisos de Administrador")
             self.btn_eliminar.setToolTip("No tiene permisos de Administrador")
-            
-        for widget in self.findChildren(QLineEdit): widget.setEnabled(activo)
-        for widget in self.findChildren(QComboBox): widget.setEnabled(activo)
         
-        self.txt_direccion.setEnabled(activo)
-        self.chk_estatus.setEnabled(activo)
-        self.spin_patente.setEnabled(activo)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_eliminar)
+        btn_layout.addWidget(self.btn_guardar)
+        right_layout.addLayout(btn_layout)
         
-        self.btn_todos.setEnabled(activo)
-        self.btn_ninguno.setEnabled(activo)
-        self.arbol_usuarios.setEnabled(activo)
-        
-        self.btn_guardar.setEnabled(activo)
-        self.btn_cancelar.setEnabled(activo)
-        
-        if activo and self.id_empresa_seleccionada is not None:
-            self.btn_eliminar.setEnabled(True)
-        else:
-            self.btn_eliminar.setEnabled(False)
+        main_layout.addLayout(right_layout)
+        self.setLayout(main_layout)
 
-    def cancelar_accion(self):
-        """Limpia el formulario y lo bloquea hasta que el usuario elija algo"""
-        self.id_empresa_seleccionada = None
-        self.lbl_titulo_form.setText("Seleccione una empresa o cree una nueva")
-        self.lista_empresas.clearSelection()
-        
-        for widget in self.findChildren(QLineEdit): widget.clear()
-        self.txt_direccion.clear()
-        self.chk_estatus.setChecked(True)
-        self.spin_patente.setValue(0.0)
-        self.txt_pais.setText("Venezuela")
-        
-        self.lbl_creado_por.setText("Creado por: -")
-        self.lbl_fecha_crea.setText("Fecha: -")
-        self.lbl_modif_por.setText("Modif. por: -")
-        self.lbl_fecha_mod.setText("Fecha: -")
-        
-        self.marcar_usuarios(False)
-        self.set_estado_formulario(False)
-
-    def limpiar_formulario(self):
-        """Botón Nueva Empresa"""
-        self.cancelar_accion() # Limpia primero
-        self.lbl_titulo_form.setText("Nueva Empresa")
-        self.set_estado_formulario(True) # Activa para escribir
-
-    # --- LÓGICA DE BASE DE DATOS Y ÁRBOL ---
+    # --- LÓGICA ---
 
     def create_checkbox_widget(self, text):
         widget = QWidget()
@@ -332,6 +270,7 @@ class EmpresasForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
+            # CORRECCIÓN: seg_usuarios
             cur.execute("SELECT id_usuario, usuario_login, nombre_completo FROM seg_usuarios WHERE estatus = TRUE ORDER BY usuario_login")
             usuarios = cur.fetchall()
             conn.close()
@@ -403,48 +342,59 @@ class EmpresasForm(QWidget):
                 self.txt_cod_contribuyente.setText(data[15] or "")
                 self.spin_patente.setValue(float(data[16] or 0.0))
                 
-                # --- NUEVO: Formateo de hora local y AM/PM ---
-                f_crea = data[18].strftime("%d/%m/%Y %I:%M %p") if data[18] else "-"
-                f_mod = data[20].strftime("%d/%m/%Y %I:%M %p") if data[20] else "-"
-                
                 self.lbl_creado_por.setText(f"Creado por: {data[17] or 'Sistema'}")
-                self.lbl_fecha_crea.setText(f"Fecha: {f_crea}")
+                self.lbl_fecha_crea.setText(f"Fecha: {str(data[18])[:16]}")
                 self.lbl_modif_por.setText(f"Modif. por: {data[19] or '-'}")
-                self.lbl_fecha_mod.setText(f"Fecha: {f_mod}")
+                self.lbl_fecha_mod.setText(f"Fecha: {str(data[20])[:16]}")
 
-            # Cargar Acceso de Usuarios
             self.marcar_usuarios(False) 
 
-            cur.execute("SELECT id_usuario FROM sys_acceso_empresas WHERE cod_compania = %s", (id_empresa,))
+            # --- CORRECCIÓN AQUÍ: Cambio a seg_acceso_empresas ---
+            cur.execute("SELECT id_usuario FROM seg_acceso_empresas WHERE cod_compania = %s", (id_empresa,))
             usuarios_acceso = [row[0] for row in cur.fetchall()]
             
-            # Bucle for en lugar de Iterator
-            for i in range(self.arbol_usuarios.topLevelItemCount()):
-                item_tree = self.arbol_usuarios.topLevelItem(i)
+            iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
+            while iterator.value():
+                item_tree = iterator.value()
                 uid = item_tree.data(0, Qt.ItemDataRole.UserRole)
-                container = self.arbol_usuarios.itemWidget(item_tree, 0)
                 
+                container = self.arbol_usuarios.itemWidget(item_tree, 0)
                 if container and uid in usuarios_acceso:
                     chk = container.findChild(QCheckBox)
                     if chk: chk.setChecked(True)
+                
+                iterator += 1
 
             conn.close()
-            
-            self.set_estado_formulario(True) # Activa la edición tras cargar
 
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
     def marcar_usuarios(self, marcar):
-        # Bucle for en lugar de Iterator
-        for i in range(self.arbol_usuarios.topLevelItemCount()):
-            item = self.arbol_usuarios.topLevelItem(i)
+        iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
+        while iterator.value():
+            item = iterator.value()
             container = self.arbol_usuarios.itemWidget(item, 0)
             if container:
                 chk = container.findChild(QCheckBox)
                 if chk: chk.setChecked(marcar)
+            iterator += 1
+
+    def limpiar_formulario(self):
+        self.id_empresa_seleccionada = None
+        self.lbl_titulo_form.setText("Nueva Empresa")
+        self.lista_empresas.clearSelection()
+        for widget in self.findChildren(QLineEdit): widget.clear()
+        self.txt_direccion.clear()
+        self.chk_estatus.setChecked(True)
+        self.spin_patente.setValue(0.0)
+        self.txt_pais.setText("Venezuela")
+        self.lbl_creado_por.setText("-"); self.lbl_fecha_crea.setText("-")
+        self.lbl_modif_por.setText("-"); self.lbl_fecha_mod.setText("-")
+        self.marcar_usuarios(False)
 
     def validar_rif(self, rif):
+        # Valida formatos tipo: J-12345678-0, V-12345678, G-12345678-9
         pattern = r"^[JVEGPC]-\d{5,9}(-\d)?$"
         return re.match(pattern, rif) is not None
 
@@ -456,7 +406,6 @@ class EmpresasForm(QWidget):
         razon = self.txt_razon_social.text().strip()
         rif = self.txt_rif.text().strip().upper()
         
-        # VALIDACIONES 
         if not razon or not rif:
             QMessageBox.warning(self, "Datos", "Razón Social y RIF son campos obligatorios.")
             return
@@ -468,10 +417,6 @@ class EmpresasForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
-            
-            # --- CORRECCIÓN DE ZONA HORARIA ---
-            # Le indicamos a Postgres que guarde la hora con respecto a Venezuela
-            cur.execute("SET TIME ZONE 'America/Caracas'")
             
             if self.id_empresa_seleccionada is None:
                 query = """
@@ -507,22 +452,26 @@ class EmpresasForm(QWidget):
                 )
                 cur.execute(query, params)
 
-            cur.execute("DELETE FROM sys_acceso_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
+            # --- CORRECCIÓN AQUÍ: Cambio a seg_acceso_empresas ---
+            cur.execute("DELETE FROM seg_acceso_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
             
-            for i in range(self.arbol_usuarios.topLevelItemCount()):
-                item = self.arbol_usuarios.topLevelItem(i)
+            iterator = QTreeWidgetItemIterator(self.arbol_usuarios)
+            while iterator.value():
+                item = iterator.value()
                 container = self.arbol_usuarios.itemWidget(item, 0)
                 
                 if container:
                     chk = container.findChild(QCheckBox)
                     if chk and chk.isChecked():
                         uid = item.data(0, Qt.ItemDataRole.UserRole)
-                        cur.execute("INSERT INTO sys_acceso_empresas (id_usuario, cod_compania) VALUES (%s, %s)", (uid, self.id_empresa_seleccionada))
+                        # --- CORRECCIÓN AQUÍ: Cambio a seg_acceso_empresas ---
+                        cur.execute("INSERT INTO seg_acceso_empresas (id_usuario, cod_compania) VALUES (%s, %s)", (uid, self.id_empresa_seleccionada))
+                iterator += 1
 
             conn.commit()
             conn.close()
             QMessageBox.information(self, "Éxito", "Guardado correctamente.")
-            self.cancelar_accion() 
+            self.limpiar_formulario()
             self.cargar_lista_empresas()
             
         except psycopg2.Error as e:
@@ -544,7 +493,7 @@ class EmpresasForm(QWidget):
                 cur.execute("DELETE FROM cfg_empresas WHERE cod_compania = %s", (self.id_empresa_seleccionada,))
                 conn.commit()
                 conn.close()
-                self.cancelar_accion()
+                self.limpiar_formulario()
                 self.cargar_lista_empresas()
             except Exception as e:
                 QMessageBox.critical(self, "Error", "No se puede eliminar (Tiene datos asociados).")
@@ -552,5 +501,5 @@ class EmpresasForm(QWidget):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = EmpresasForm(1)
-    window.showMaximized()
+    window.show()
     sys.exit(app.exec())

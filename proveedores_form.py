@@ -320,9 +320,10 @@ class ProveedorForm(QWidget):
             cur = conn.cursor()
             
             if filtro:
+                # --- CORRECCIÓN: com_proveedores ---
                 query = """
                     SELECT cod_proveedor, nombre_proveedor, rif 
-                    FROM maestro_proveedores 
+                    FROM com_proveedores 
                     WHERE cod_compania = %s AND 
                           (nombre_proveedor ILIKE %s OR rif ILIKE %s)
                     ORDER BY nombre_proveedor
@@ -330,7 +331,8 @@ class ProveedorForm(QWidget):
                 patron = f"%{filtro}%"
                 cur.execute(query, (self.cod_compania, patron, patron))
             else:
-                query = "SELECT cod_proveedor, nombre_proveedor, rif FROM maestro_proveedores WHERE cod_compania = %s ORDER BY nombre_proveedor"
+                # --- CORRECCIÓN: com_proveedores ---
+                query = "SELECT cod_proveedor, nombre_proveedor, rif FROM com_proveedores WHERE cod_compania = %s ORDER BY nombre_proveedor"
                 cur.execute(query, (self.cod_compania,))
                 
             for p in cur.fetchall():
@@ -348,6 +350,7 @@ class ProveedorForm(QWidget):
         try:
             conn = psycopg2.connect(**DB_PARAMS)
             cur = conn.cursor()
+            # --- CORRECCIÓN: com_proveedores ---
             query = """
                 SELECT p.tipo_proveedor, p.rif, p.nit, p.nombre_proveedor, p.contacto1, p.contacto2, 
                        p.email1, p.email2, p.telefono1, p.telefono2, p.fax, p.direccion, p.direccion_alterna, 
@@ -356,7 +359,7 @@ class ProveedorForm(QWidget):
                        p.contribuyente_iva, p.figura_tributaria, p.registro_unico, p.tipo_persona, 
                        p.cod_retencion, p.sujeto_retencion_iva, p.comentario, p.estatus,
                        u1.usuario_login, p.fecha_registro, u2.usuario_login, p.fecha_modifica
-                FROM maestro_proveedores p
+                FROM com_proveedores p
                 LEFT JOIN seg_usuarios u1 ON p.id_user_crea = u1.id_usuario
                 LEFT JOIN seg_usuarios u2 ON p.id_user_mod = u2.id_usuario
                 WHERE p.cod_compania = %s AND p.cod_proveedor = %s
@@ -366,7 +369,6 @@ class ProveedorForm(QWidget):
             conn.close()
             
             if d:
-                # --- AQUÍ SE ACTUALIZA EL TÍTULO CON EL CÓDIGO Y EL NOMBRE ---
                 nombre_proveedor = d[3] or "Sin Nombre"
                 self.lbl_titulo_form.setText(f"Editando Proveedor: {cod_prov} - {nombre_proveedor}")
                 
@@ -454,8 +456,9 @@ class ProveedorForm(QWidget):
             cur.execute("SET TIME ZONE 'America/Caracas'")
             
             if self.cod_proveedor_seleccionado is None:
+                # --- CORRECCIÓN: com_proveedores ---
                 query = """
-                    INSERT INTO maestro_proveedores (
+                    INSERT INTO com_proveedores (
                         tipo_proveedor, rif, nit, nombre_proveedor, contacto1, contacto2, email1, email2, 
                         telefono1, telefono2, fax, direccion, direccion_alterna, zona, comentario, lineas, 
                         num_cuenta_bancaria, beneficiario, nombre_banco, tipo_contribuyente, contribuyente_iva, 
@@ -468,8 +471,9 @@ class ProveedorForm(QWidget):
                 """
                 cur.execute(query, (*params, self.cod_compania, cod, self.id_usuario_actual))
             else:
+                # --- CORRECCIÓN: com_proveedores ---
                 query = """
-                    UPDATE maestro_proveedores SET
+                    UPDATE com_proveedores SET
                         tipo_proveedor=%s, rif=%s, nit=%s, nombre_proveedor=%s, contacto1=%s, contacto2=%s, 
                         email1=%s, email2=%s, telefono1=%s, telefono2=%s, fax=%s, direccion=%s, direccion_alterna=%s, 
                         zona=%s, comentario=%s, lineas=%s, num_cuenta_bancaria=%s, beneficiario=%s, nombre_banco=%s, 
@@ -504,7 +508,8 @@ class ProveedorForm(QWidget):
             try:
                 conn = psycopg2.connect(**DB_PARAMS)
                 cur = conn.cursor()
-                cur.execute("DELETE FROM maestro_proveedores WHERE cod_compania=%s AND cod_proveedor=%s", (self.cod_compania, self.cod_proveedor_seleccionado))
+                # --- CORRECCIÓN: com_proveedores ---
+                cur.execute("DELETE FROM com_proveedores WHERE cod_compania=%s AND cod_proveedor=%s", (self.cod_compania, self.cod_proveedor_seleccionado))
                 conn.commit()
                 conn.close()
                 self.cancelar_accion()
