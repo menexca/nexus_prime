@@ -20,25 +20,8 @@ class AlmacenesForm(QWidget):
         
         self.setWindowTitle(f"Gestión de Almacenes - {self.nombre_empresa}")
         self.resize(800, 500)
-        self.set_style_local()
         self.init_ui()
         self.cargar_almacenes()
-
-    def set_style_local(self):
-        self.setStyleSheet("""
-            QWidget { background-color: #F4F6F9; color: #333; font-family: 'Segoe UI', sans-serif; }
-            QGroupBox { font-weight: bold; border: 1px solid #BDC3C7; border-radius: 6px; margin-top: 15px; padding-top: 15px; background-color: #FFFFFF; }
-            QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 10px; top: -5px; padding: 0 5px; color: #2C3E50; }
-            QLineEdit, QTextEdit { background-color: #FFFFFF; border: 1px solid #BDC3C7; border-radius: 4px; padding: 5px; }
-            QLineEdit:focus, QTextEdit:focus { border: 1px solid #3498DB; }
-            QTableWidget { background-color: #FFFFFF; gridline-color: #EEEEEE; border: 1px solid #DDDDDD; }
-            QHeaderView::section { background-color: #34495E; color: white; padding: 6px; font-weight: bold; border: none; }
-            QPushButton { font-weight: bold; padding: 8px 15px; border-radius: 4px; }
-            QPushButton#btn_guardar { background-color: #27AE60; color: white; }
-            QPushButton#btn_guardar:hover { background-color: #2ECC71; }
-            QPushButton#btn_limpiar { background-color: #95A5A6; color: white; }
-            QPushButton#btn_eliminar { background-color: #E74C3C; color: white; }
-        """)
 
     def init_ui(self):
         main_layout = QHBoxLayout(self)

@@ -1,7 +1,8 @@
 import sys
 import logging
 import traceback
-import inspect  # <-- Añadimos inspect
+import inspect  
+import os # <-- Añadimos os para limpiar las rutas largas
 from functools import wraps
 from PyQt6.QtWidgets import QMessageBox
 
@@ -14,11 +15,30 @@ logging.basicConfig(
 )
 
 def registrar_y_notificar_error(exctype, value, tb, ventana_padre=None):
-    """Extrae el detalle del error, lo guarda en el log y avisa al usuario."""
+    """Extrae el detalle del error, lo guarda en el log y avisa al usuario con detalles precisos."""
+    # 1. Guardamos el traceback completo en el log (como siempre)
     traceback_details = ''.join(traceback.format_exception(exctype, value, tb))
     logging.error("Excepción capturada:\n%s", traceback_details)
     
-    mensaje_usuario = f"Ha ocurrido un error inesperado.\n\nMotivo: {str(value)}\n\nEl detalle técnico ha sido guardado en el registro."
+    # 2. Extraemos la información del último paso que causó el error
+    tb_info = traceback.extract_tb(tb)
+    ultimo_paso = tb_info[-1] # Tomamos el último elemento de la pila de errores
+    
+    archivo_completo = ultimo_paso.filename
+    archivo_corto = os.path.basename(archivo_completo) # Solo el nombre del archivo, no la ruta larga
+    linea = ultimo_paso.lineno
+    funcion = ultimo_paso.name
+    
+    # 3. Armamos un mensaje mucho más útil para el desarrollador
+    mensaje_usuario = (
+        f"Ha ocurrido un error inesperado en el sistema.\n\n"
+        f"🔴 Motivo: {str(value)}\n\n"
+        f"📍 Ubicación del fallo:\n"
+        f"   • Archivo: {archivo_corto}\n"
+        f"   • Función: {funcion}()\n"
+        f"   • Línea: {linea}\n\n"
+        f"El detalle técnico completo ha sido guardado en el archivo log."
+    )
     
     if ventana_padre:
         QMessageBox.critical(ventana_padre, "Error en el Sistema", mensaje_usuario)

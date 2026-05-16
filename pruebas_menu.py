@@ -12,10 +12,10 @@ from PyQt6.QtCore import Qt, QTimer, QTime, QDate
 from db_config import DB_PARAMS
 
 # --- IMPORTACIÓN DE TUS MÓDULOS ---
-from proveedores_form import ProveedorForm
+from Vistas.proveedores_form import ProveedorForm
 from productos_form import ProductosForm
-from empresas_form import EmpresasForm
-from usuarios_form import UsuariosForm
+from Vistas.empresas_form import EmpresasForm
+from Vistas.usuarios_form import UsuariosForm
 
 class MenuPrincipal(QMainWindow):
     def __init__(self, cod_compania, id_usuario, nombre_empresa, rol_usuario):

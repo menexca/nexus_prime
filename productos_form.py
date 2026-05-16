@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
+import shutil
 import psycopg2
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
@@ -12,143 +14,21 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QColor, QCursor, QFont
 from datetime import datetime
 
+# --- IMPORTAMOS LAS UTILIDADES GLOBALES Y LA BD ---
 try:
     from db_config import DB_PARAMS
 except ImportError:
     DB_PARAMS = {}
 
-# ==============================================================================
-# CLASE AUXILIAR: DIÁLOGO GENÉRICO PARA MAESTROS (CRUD)
-# ==============================================================================
-class MaestroAuxiliarDialog(QDialog):
-    datos_actualizados = pyqtSignal()
+try:
+    from utils_ui import MaestroAuxiliarDialog, ClickableLabel
+except ImportError:
+    QMessageBox.critical(None, "Error de Arquitectura", "Falta el archivo utils_ui.py en el proyecto.")
+    sys.exit(1)
 
-    def __init__(self, conn, cod_compania, titulo, tabla_bd, campo_pk, campo_nombre, parent_id=None, campo_fk=None):
-        super().__init__()
-        self.conn = conn
-        self.cod_compania = cod_compania
-        self.tabla = tabla_bd
-        self.pk = campo_pk
-        self.campo_nombre = campo_nombre
-        self.parent_id = parent_id 
-        self.campo_fk = campo_fk 
-
-        self.setWindowTitle(f"Gestión de {titulo}")
-        self.resize(600, 450)
-        self.init_ui()
-        self.cargar_datos()
-
-    def init_ui(self):
-        layout = QVBoxLayout()
-        grp = QGroupBox("Datos del Registro")
-        frm = QFormLayout()
-        self.txt_codigo = QLineEdit()
-        self.txt_codigo.setPlaceholderText("Código (Opcional)")
-        self.txt_descripcion = QLineEdit()
-        self.txt_descripcion.setPlaceholderText("Nombre / Descripción")
-        
-        frm.addRow("Código:", self.txt_codigo)
-        frm.addRow("Descripción:", self.txt_descripcion)
-        
-        btn_box = QHBoxLayout()
-        self.btn_nuevo = QPushButton("Limpiar / Nuevo")
-        self.btn_guardar = QPushButton("Guardar")
-        self.btn_guardar.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
-        self.btn_nuevo.clicked.connect(self.limpiar_form)
-        self.btn_guardar.clicked.connect(self.guardar_registro)
-        
-        btn_box.addWidget(self.btn_nuevo)
-        btn_box.addWidget(self.btn_guardar)
-        frm.addRow(btn_box)
-        grp.setLayout(frm)
-        layout.addWidget(grp)
-        
-        self.txt_buscar = QLineEdit()
-        self.txt_buscar.setPlaceholderText("🔍 Buscar...")
-        self.txt_buscar.textChanged.connect(self.cargar_datos)
-        layout.addWidget(self.txt_buscar)
-        
-        self.tabla_lista = QTableWidget()
-        self.tabla_lista.setColumnCount(3)
-        self.tabla_lista.setHorizontalHeaderLabels(["ID", "Descripción", "Activo"])
-        self.tabla_lista.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.tabla_lista.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.tabla_lista.cellDoubleClicked.connect(self.cargar_registro_seleccionado)
-        layout.addWidget(self.tabla_lista)
-        
-        self.setLayout(layout)
-        self.id_edicion = None
-
-    def cargar_datos(self):
-        if not self.conn: return
-        filtro = self.txt_buscar.text()
-        try:
-            cur = self.conn.cursor()
-            sql = f"SELECT {self.pk}, {self.campo_nombre}, activo FROM {self.tabla} WHERE cod_compania = %s"
-            params = [self.cod_compania]
-            if self.parent_id and self.campo_fk:
-                sql += f" AND {self.campo_fk} = %s"
-                params.append(self.parent_id)
-            if filtro:
-                sql += f" AND {self.campo_nombre} ILIKE %s"
-                params.append(f"%{filtro}%")
-            sql += f" ORDER BY {self.campo_nombre}"
-            cur.execute(sql, tuple(params))
-            filas = cur.fetchall()
-            
-            self.tabla_lista.setRowCount(0)
-            for row in filas:
-                idx = self.tabla_lista.rowCount()
-                self.tabla_lista.insertRow(idx)
-                self.tabla_lista.setItem(idx, 0, QTableWidgetItem(str(row[0])))
-                self.tabla_lista.setItem(idx, 1, QTableWidgetItem(row[1]))
-                self.tabla_lista.setItem(idx, 2, QTableWidgetItem("SI" if row[2] else "NO"))
-                self.tabla_lista.item(idx, 0).setData(Qt.ItemDataRole.UserRole, row[0])
-        except Exception as e:
-            pass
-
-    def guardar_registro(self):
-        nombre = self.txt_descripcion.text().strip()
-        if not nombre:
-            QMessageBox.warning(self, "Error", "El nombre es obligatorio")
-            return
-        try:
-            cur = self.conn.cursor()
-            if self.id_edicion is None:
-                cols = f"cod_compania, {self.campo_nombre}"
-                vals = "%s, %s"
-                params = [self.cod_compania, nombre]
-                if self.parent_id and self.campo_fk:
-                    cols += f", {self.campo_fk}"
-                    vals += ", %s"
-                    params.append(self.parent_id)
-                sql = f"INSERT INTO {self.tabla} ({cols}) VALUES ({vals})"
-                cur.execute(sql, tuple(params))
-            else:
-                sql = f"UPDATE {self.tabla} SET {self.campo_nombre} = %s WHERE {self.pk} = %s"
-                cur.execute(sql, (nombre, self.id_edicion))
-            
-            self.conn.commit()
-            self.limpiar_form()
-            self.cargar_datos()
-            self.datos_actualizados.emit()
-            QMessageBox.information(self, "Éxito", "Registro guardado.")
-        except Exception as e:
-            self.conn.rollback()
-            QMessageBox.critical(self, "Error Guardar", str(e))
-
-    def cargar_registro_seleccionado(self, row, col):
-        item_id = self.tabla_lista.item(row, 0)
-        self.id_edicion = item_id.data(Qt.ItemDataRole.UserRole)
-        self.txt_descripcion.setText(self.tabla_lista.item(row, 1).text())
-    
-    def limpiar_form(self):
-        self.id_edicion = None
-        self.txt_codigo.clear()
-        self.txt_descripcion.clear()
 
 # ==============================================================================
-# CATÁLOGO DE PRODUCTOS (BUSCADOR AVANZADO)
+# CATÁLOGO DE PRODUCTOS (BÚSQUEDA AVANZADA CON MÚLTIPLES FILTROS)
 # ==============================================================================
 class CatalogoProductosDialog(QDialog):
     producto_seleccionado = pyqtSignal(str) 
@@ -157,22 +37,61 @@ class CatalogoProductosDialog(QDialog):
         super().__init__()
         self.conn = conn
         self.cod_compania = cod_compania
-        self.setWindowTitle("Catálogo de Productos")
-        self.resize(800, 500)
+        self.setWindowTitle("Búsqueda Avanzada de Productos")
+        self.resize(1050, 600)
+        
+        self.filtros_activos = {} # Diccionario: { 'columna_bd': (id, 'Nombre para el Tag', combobox_reference) }
         self.init_ui()
         self.buscar()
 
     def init_ui(self):
-        layout = QVBoxLayout()
-        h_layout = QHBoxLayout()
-        self.txt_buscar = QLineEdit()
-        self.txt_buscar.setPlaceholderText("Buscar por Código, Nombre o Referencia...")
-        self.txt_buscar.textChanged.connect(self.buscar)
-        h_layout.addWidget(self.txt_buscar)
-        layout.addLayout(h_layout)
+        layout = QVBoxLayout(self)
         
+        # --- Barra Superior de Búsqueda y Filtros ---
+        search_box = QGroupBox("Criterios de Búsqueda")
+        search_layout = QVBoxLayout(search_box)
+        
+        # Fila 1: Buscador de texto
+        row1 = QHBoxLayout()
+        self.txt_buscar = QLineEdit()
+        self.txt_buscar.setPlaceholderText("Escriba Código, Nombre o Referencia...")
+        self.txt_buscar.textChanged.connect(self.buscar)
+        row1.addWidget(QLabel("🔍"))
+        row1.addWidget(self.txt_buscar)
+        search_layout.addLayout(row1)
+        
+        # Fila 2: Combos de Filtros
+        row2 = QHBoxLayout()
+        self.cmb_filtro_grupo = QComboBox()
+        self.cmb_filtro_subgrupo = QComboBox()
+        self.cmb_filtro_categoria = QComboBox()
+        self.cmb_filtro_marca = QComboBox()
+        
+        row2.addWidget(self.cmb_filtro_grupo)
+        row2.addWidget(self.cmb_filtro_subgrupo)
+        row2.addWidget(self.cmb_filtro_categoria)
+        row2.addWidget(self.cmb_filtro_marca)
+        search_layout.addLayout(row2)
+        
+        layout.addWidget(search_box)
+
+        self.cargar_filtros_combos()
+        
+        # Conectar señales después de cargar para evitar disparos en falso
+        self.cmb_filtro_grupo.currentIndexChanged.connect(lambda: self.agregar_filtro('id_grupo', self.cmb_filtro_grupo))
+        self.cmb_filtro_subgrupo.currentIndexChanged.connect(lambda: self.agregar_filtro('id_subgrupo', self.cmb_filtro_subgrupo))
+        self.cmb_filtro_categoria.currentIndexChanged.connect(lambda: self.agregar_filtro('id_categoria', self.cmb_filtro_categoria))
+        self.cmb_filtro_marca.currentIndexChanged.connect(lambda: self.agregar_filtro('id_marca', self.cmb_filtro_marca))
+
+        # --- Área de Filtros Activos (Tags con X) ---
+        self.frame_tags = QFrame()
+        self.layout_tags = QHBoxLayout(self.frame_tags)
+        self.layout_tags.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.frame_tags)
+
+        # --- Tabla de Resultados ---
         self.tabla = QTableWidget()
-        cols = ["SKU", "Nombre", "Marca", "Ref.", "Precio Base ($)"]
+        cols = ["SKU", "Nombre", "Marca", "Grupo", "Costo $", "Existencia"]
         self.tabla.setColumnCount(len(cols))
         self.tabla.setHorizontalHeaderLabels(cols)
         self.tabla.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -180,24 +99,96 @@ class CatalogoProductosDialog(QDialog):
         self.tabla.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tabla.cellDoubleClicked.connect(self.seleccionar)
         layout.addWidget(self.tabla)
-        self.setLayout(layout)
+
+    def cargar_filtros_combos(self):
+        if not self.conn: return
+        try:
+            cur = self.conn.cursor()
+            def llenar(combo, tabla, pk, txt, placeholder):
+                cur.execute(f"SELECT {pk}, {txt} FROM {tabla} WHERE cod_compania = %s AND activo = true", (self.cod_compania,))
+                combo.addItem(placeholder, None)
+                for r in cur.fetchall(): combo.addItem(r[1], r[0])
+
+            llenar(self.cmb_filtro_grupo, "inv_grupos", "id_grupo", "nombre_grupo", "Filtrar por Grupo...")
+            llenar(self.cmb_filtro_subgrupo, "inv_subgrupos", "id_subgrupo", "nombre_subgrupo", "Filtrar por Subgrupo...")
+            llenar(self.cmb_filtro_categoria, "inv_categorias", "id_categoria", "nombre_categoria", "Filtrar por Categoría...")
+            llenar(self.cmb_filtro_marca, "inv_marcas", "id_marca", "nombre_marca", "Filtrar por Marca...")
+        except Exception as e: print("Error cargando filtros:", e)
+
+    def agregar_filtro(self, campo_bd, combo_widget):
+        id_filtro = combo_widget.currentData()
+        nombre = combo_widget.currentText()
+        
+        if id_filtro:
+            self.filtros_activos[campo_bd] = (id_filtro, nombre, combo_widget)
+            self.dibujar_tags()
+            self.buscar()
+
+    def dibujar_tags(self):
+        # Limpiar tags actuales de la pantalla
+        for i in reversed(range(self.layout_tags.count())): 
+            widget = self.layout_tags.itemAt(i).widget()
+            if widget: widget.setParent(None)
+        
+        # Dibujar los activos
+        for campo, info in self.filtros_activos.items():
+            tag = QFrame()
+            tag.setStyleSheet("background-color: #3498DB; color: white; border-radius: 10px; padding: 2px 10px;")
+            l = QHBoxLayout(tag)
+            l.setContentsMargins(5,2,5,2)
+            lbl = QLabel(f"{info[1]}")
+            btn_x = QPushButton("✕")
+            btn_x.setFixedSize(16,16)
+            btn_x.setStyleSheet("background: transparent; color: white; font-weight: bold; border: none;")
+            btn_x.setCursor(Qt.CursorShape.PointingHandCursor)
+            # Pasamos el 'campo' a la función de eliminar
+            btn_x.clicked.connect(lambda ch, c=campo: self.quitar_filtro(c))
+            
+            l.addWidget(lbl)
+            l.addWidget(btn_x)
+            self.layout_tags.addWidget(tag)
+
+    def quitar_filtro(self, campo):
+        if campo in self.filtros_activos:
+            info = self.filtros_activos[campo]
+            combo = info[2] # Recuperamos qué combo originó este filtro
+            
+            # Lo quitamos del diccionario
+            del self.filtros_activos[campo]
+            
+            # Reseteamos el combo visualmente sin disparar la búsqueda 2 veces
+            combo.blockSignals(True)
+            combo.setCurrentIndex(0)
+            combo.blockSignals(False)
+            
+            self.dibujar_tags()
+            self.buscar()
 
     def buscar(self):
         if not self.conn: return
-        txt = self.txt_buscar.text()
+        texto = self.txt_buscar.text().strip()
         try:
             cur = self.conn.cursor()
             sql = """
-                SELECT p.cod_producto, p.nombre, m.nombre_marca, p.cod_alterno, p.costo_final_usd
+                SELECT p.cod_producto, p.nombre, m.nombre_marca, g.nombre_grupo, p.costo_final_usd, 
+                       COALESCE((SELECT SUM(cantidad_real) FROM inv_existencias WHERE cod_producto = p.cod_producto AND cod_compania = p.cod_compania), 0)
                 FROM inv_productos p
                 LEFT JOIN inv_marcas m ON p.id_marca = m.id_marca
+                LEFT JOIN inv_grupos g ON p.id_grupo = g.id_grupo
                 WHERE p.cod_compania = %s
             """
             params = [self.cod_compania]
-            if txt:
-                sql += " AND (p.cod_producto ILIKE %s OR p.nombre ILIKE %s OR p.cod_alterno ILIKE %s)"
-                params.extend([f"%{txt}%", f"%{txt}%", f"%{txt}%"])
-            sql += " LIMIT 50"
+            
+            if texto:
+                sql += " AND (p.cod_producto ILIKE %s OR p.nombre ILIKE %s OR p.cod_barra ILIKE %s OR p.cod_alterno ILIKE %s)"
+                params.extend([f"%{texto}%", f"%{texto}%", f"%{texto}%", f"%{texto}%"])
+            
+            # Aplicar TODOS los filtros activos dinámicamente
+            for campo, info in self.filtros_activos.items():
+                sql += f" AND p.{campo} = %s"
+                params.append(info[0])
+
+            sql += " ORDER BY p.nombre LIMIT 100"
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
             
@@ -209,31 +200,39 @@ class CatalogoProductosDialog(QDialog):
                 self.tabla.setItem(i, 1, QTableWidgetItem(str(r[1])))
                 self.tabla.setItem(i, 2, QTableWidgetItem(str(r[2] or "")))
                 self.tabla.setItem(i, 3, QTableWidgetItem(str(r[3] or "")))
-                self.tabla.setItem(i, 4, QTableWidgetItem(f"{r[4]:.2f}" if r[4] else "0.00"))
+                
+                it_costo = QTableWidgetItem(f"{r[4]:.2f}")
+                it_costo.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self.tabla.setItem(i, 4, it_costo)
+                
+                it_ext = QTableWidgetItem(f"{r[5]:.2f}")
+                it_ext.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self.tabla.setItem(i, 5, it_ext)
         except Exception as e:
-            pass
+            print(f"Error Búsqueda Avanzada: {e}")
 
     def seleccionar(self, row, col):
         sku = self.tabla.item(row, 0).text()
         self.producto_seleccionado.emit(sku)
         self.accept()
 
+
 # ==============================================================================
 # CLASE PRINCIPAL: FORMULARIO DE PRODUCTOS
 # ==============================================================================
-class ClickableLabel(QLabel):
-    clicked = pyqtSignal()
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
 class ProductosForm(QWidget):
     def __init__(self, cod_compania, id_usuario, db_connection_or_empresa):
         super().__init__()
         self.cod_compania = cod_compania
         self.id_usuario = id_usuario
         self.nombre_usuario_actual = "Usuario"
+        
+        # Ruta corporativa para imágenes (Carpeta compartida en Red)
+        # Puedes cambiar 'SERVIDOR' por la IP de tu servidor real
+        self.PATH_IMAGENES = r"G:\Mi unidad\Sistema - nexus prime\sesion\Imagenes_Productos" 
+        if not os.path.exists(self.PATH_IMAGENES):
+            try: os.makedirs(self.PATH_IMAGENES, exist_ok=True)
+            except: self.PATH_IMAGENES = "img_productos/" # Fallback local
         
         self.conn_propia = False
         if hasattr(db_connection_or_empresa, 'cursor'):
@@ -255,48 +254,26 @@ class ProductosForm(QWidget):
             except: pass
 
         self.tasa_cambio_actual = 60.50 
-        self.ruta_imagen_actual = ""
+        self.ruta_imagen_local = ""
         
         self.setWindowTitle("Ficha Maestra de Productos - NEXUS PRIME")
         self.resize(1150, 800)
-        self.set_style_local()
         self.init_ui()
         
         if self.conn:
-            self.cargar_estructuras_dinamicas() # Carga combos, almacenes y tarifas
-            self.configurar_autocompletado() 
+            self.cargar_estructuras_dinamicas() 
+            self.configurar_autocompletado_hibrido() 
+            self.configurar_autocompletado_insumos()
         else:
             QMessageBox.critical(self, "Error", "No hay conexión a la base de datos.")
             
         self.recalcular_costos_importacion()
-        self.toggle_tab_lotes(False)
-        self.toggle_tab_composicion(False)
-        self.toggle_estrategia_precios_lote()
+        self.limpiar_ficha() # Inicia la ficha completamente limpia
 
     def closeEvent(self, event):
         if self.conn_propia and self.conn:
             self.conn.close()
         event.accept()
-
-    def set_style_local(self):
-        self.setStyleSheet("""
-            QWidget { background-color: #E8ECEF; color: #333; font-family: 'Segoe UI', sans-serif; }
-            QGroupBox { font-weight: bold; border: 1px solid #BDC3C7; border-radius: 6px; margin-top: 25px; padding-top: 15px; padding-bottom: 10px; background-color: #E8ECEF; }
-            QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 15px; top: 0px; padding: 5px 8px; color: #2C3E50; }
-            QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox { background-color: #FFFFFF; border: 1px solid #BDC3C7; border-radius: 4px; padding: 5px; min-height: 22px; selection-background-color: #3498DB; }
-            QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus { border: 1px solid #3498DB; }
-            QTabWidget::pane { border: 1px solid #BDC3C7; background: #FFFFFF; }
-            QTabBar::tab { background: #D5DBDB; padding: 8px 15px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px;}
-            QTabBar::tab:selected { background: #FFFFFF; font-weight: bold; border-bottom: none; }
-            QTableWidget { background-color: #FFFFFF; alternate-background-color: #F9F9F9; gridline-color: #EEEEEE; border: 1px solid #DDDDDD; }
-            QHeaderView::section { background-color: #34495E; color: white; padding: 6px; font-weight: bold; border: none; font-size: 11px; }
-            QPushButton[cssClass="btn_plus"] { background-color: #3498DB; color: white; font-weight: bold; border-radius: 4px; max-width: 30px; }
-            QPushButton[cssClass="btn_plus"]:hover { background-color: #2980B9; }
-            QPushButton[cssClass="btn_search"] { background-color: #E67E22; color: white; font-weight: bold; border: none; border-radius: 4px; padding: 6px; text-align: left; }
-            QPushButton[cssClass="btn_search"]:hover { background-color: #D35400; }
-            QPushButton[cssClass="btn_delete"] { background-color: #E74C3C; color: white; font-weight: bold; border-radius: 4px; padding: 10px; }
-            QPushButton[cssClass="btn_delete"]:hover { background-color: #C0392B; }
-        """)
 
     def crear_input_numerico(self, decimals=2, suffix=""):
         spin = QDoubleSpinBox()
@@ -307,17 +284,19 @@ class ProductosForm(QWidget):
         return spin
 
     def init_ui(self):
-        main_layout = QVBoxLayout()
+        main_layout = QVBoxLayout(self)
         main_layout.setSpacing(10) 
 
         # --- HEADER ---
         header_frame = QFrame()
-        header_frame.setStyleSheet("background-color: #FFFFFF; border: 1px solid #D5DBDB; border-radius: 8px;")
-        header_frame.setFixedHeight(160) 
+        header_frame.setObjectName("HeaderFrame")
+        header_frame.setStyleSheet("#HeaderFrame { background-color: #FFFFFF; border: 1px solid #D5DBDB; border-radius: 8px; }")
+        header_frame.setFixedHeight(170) 
         header_layout = QHBoxLayout(header_frame)
         
+        # Imagen con lógica corporativa
         self.lbl_imagen = ClickableLabel("FOTO\n(Clic para cambiar)")
-        self.lbl_imagen.setFixedSize(135, 135)
+        self.lbl_imagen.setFixedSize(140, 140)
         self.lbl_imagen.setStyleSheet("border: 2px dashed #BDC3C7; background-color: #F8F9F9; font-weight:bold; color: #95A5A6;")
         self.lbl_imagen.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_imagen.setScaledContents(True)
@@ -326,27 +305,30 @@ class ProductosForm(QWidget):
         
         ident_layout = QFormLayout()
         sku_layout = QHBoxLayout()
-        self.btn_buscar_sku = QPushButton("🔍 Código SKU:")
+        self.btn_buscar_sku = QPushButton("🔍")
+        self.btn_buscar_sku.setToolTip("Abrir Catálogo Avanzado")
+        self.btn_buscar_sku.setFixedSize(35, 30)
         self.btn_buscar_sku.setProperty("cssClass", "btn_search")
         self.btn_buscar_sku.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_buscar_sku.setFixedWidth(110)
         self.btn_buscar_sku.clicked.connect(self.abrir_catalogo) 
+        self.btn_buscar_sku.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         
         self.txt_sku = QLineEdit()
-        self.txt_sku.setPlaceholderText("Escriba código o presione Buscar...")
-        self.txt_sku.setStyleSheet("font-weight: bold; font-size: 15px;")
-        self.txt_sku.returnPressed.connect(lambda: self.cargar_datos_producto(self.txt_sku.text()))
+        self.txt_sku.setPlaceholderText("CÓDIGO SKU (Requerido) *")
+        self.txt_sku.setStyleSheet("font-weight: bold; font-size: 15px; border: 1px solid #E74C3C;") # Borde rojo indica obligatorio
+        self.txt_sku.returnPressed.connect(self.procesar_enter_sku)
         
-        sku_layout.addWidget(self.btn_buscar_sku)
         sku_layout.addWidget(self.txt_sku)
+        sku_layout.addWidget(self.btn_buscar_sku)
         
         self.txt_nombre = QLineEdit()
-        self.txt_nombre.setPlaceholderText("Escriba nombre para buscar...")
-        self.txt_nombre.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.txt_nombre.setPlaceholderText("Nombre Completo del Producto (Requerido) *")
+        self.txt_nombre.setStyleSheet("font-weight: bold; font-size: 18px; border: 1px solid #E74C3C;")
         self.txt_barra = QLineEdit()
+        self.txt_barra.setPlaceholderText("Código de Barras EAN/UPC")
         
-        ident_layout.addRow(sku_layout) 
-        ident_layout.addRow("Nombre:", self.txt_nombre)
+        ident_layout.addRow("SKU:", sku_layout) 
+        ident_layout.addRow("Descripción:", self.txt_nombre)
         ident_layout.addRow("Cod. Barras:", self.txt_barra)
         header_layout.addLayout(ident_layout, stretch=2)
         
@@ -354,9 +336,9 @@ class ProductosForm(QWidget):
         self.chk_activo = QCheckBox("PRODUCTO ACTIVO"); self.chk_activo.setChecked(True)
         self.chk_activo.setStyleSheet("color: #27AE60; font-weight:bold; font-size: 13px;")
         self.lbl_stock_val = QLabel("0.00")
-        self.lbl_stock_val.setStyleSheet("font-size: 28px; font-weight: bold; color: #2980B9;")
+        self.lbl_stock_val.setStyleSheet("font-size: 32px; font-weight: bold; color: #2980B9;")
         kpi_layout.addWidget(self.chk_activo)
-        kpi_layout.addWidget(QLabel("Existencia Total"))
+        kpi_layout.addWidget(QLabel("STOCK TOTAL ACTUAL"))
         kpi_layout.addWidget(self.lbl_stock_val)
         header_layout.addLayout(kpi_layout)
         main_layout.addWidget(header_frame)
@@ -372,76 +354,79 @@ class ProductosForm(QWidget):
         main_layout.addWidget(self.tabs)
         
         # --- FOOTER BOTONES Y AUDITORÍA ---
-        footer_layout = QVBoxLayout()
-        btn_layout = QHBoxLayout()
+        footer_layout = QHBoxLayout()
         
-        btn_limpiar = QPushButton("🧹 Limpiar Ficha")
-        btn_limpiar.setStyleSheet("background-color: #95A5A6; color: white; padding: 10px; font-weight: bold; border-radius:4px;")
-        btn_limpiar.clicked.connect(self.limpiar_ficha)
-        
+        btn_nuevo = QPushButton("✨ NUEVO PRODUCTO")
+        btn_nuevo.setStyleSheet("background-color: #3498DB; color: white; padding: 10px; font-weight: bold; border-radius:4px;")
+        btn_nuevo.clicked.connect(self.limpiar_ficha)
+
         self.btn_eliminar = QPushButton("🗑️ Eliminar")
         self.btn_eliminar.setProperty("cssClass", "btn_delete")
         self.btn_eliminar.clicked.connect(self.eliminar_producto)
-        self.btn_eliminar.setVisible(False) # Solo se muestra si el producto existe
         
         btn_save = QPushButton("💾 GUARDAR / ACTUALIZAR")
-        btn_save.setStyleSheet("background-color: #27AE60; color: white; padding: 10px 25px; font-weight: bold; font-size: 14px; border-radius:4px;")
+        btn_save.setObjectName("btn_guardar")
         btn_save.clicked.connect(self.guardar_producto)
         
-        btn_layout.addWidget(btn_limpiar)
-        btn_layout.addWidget(self.btn_eliminar)
-        btn_layout.addStretch()
-        btn_layout.addWidget(btn_save)
-        
-        fecha_hoy = datetime.now().strftime("%d/%m/%Y")
-        self.lbl_auditoria = QLabel(f"📝 Registrado por: {self.nombre_usuario_actual} | Fecha: {fecha_hoy}  ---  ✏️ Modificado por: Ninguno | Fecha Mod: -")
-        self.lbl_auditoria.setStyleSheet("color: #7F8C8D; font-size: 11px; font-style: italic; margin-top: 5px;")
-        
-        footer_layout.addLayout(btn_layout)
-        footer_layout.addWidget(self.lbl_auditoria, alignment=Qt.AlignmentFlag.AlignCenter)
+        footer_layout.addWidget(btn_nuevo)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.btn_eliminar)
+        footer_layout.addWidget(btn_save)
         main_layout.addLayout(footer_layout)
         
-        self.setLayout(main_layout)
+        self.lbl_auditoria = QLabel("-")
+        self.lbl_auditoria.setStyleSheet("color: #7F8C8D; font-size: 11px; font-style: italic; margin-top: 5px;")
+        main_layout.addWidget(self.lbl_auditoria, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def crear_selector_con_boton(self, funcion_plus):
         widget = QWidget()
         h_layout = QHBoxLayout(widget)
         h_layout.setContentsMargins(0, 0, 0, 0)
-        h_layout.setSpacing(4) # Un poquito más de separación
+        h_layout.setSpacing(4) 
         
         combo = QComboBox()
-        
         btn_plus = QPushButton("+")
-        btn_plus.setFixedSize(30, 26) # Tamaño un poco más cómodo para hacer clic
+        btn_plus.setFixedSize(30, 26) 
         btn_plus.setCursor(Qt.CursorShape.PointingHandCursor)
-        
-        # APLICAMOS EL ESTILO DIRECTAMENTE AQUÍ (A prueba de fallos)
-        btn_plus.setStyleSheet("""
-            QPushButton {
-                background-color: #3498DB; 
-                color: white; 
-                font-weight: bold; 
-                font-size: 16px;
-                border-radius: 4px; 
-            }
-            QPushButton:hover { 
-                background-color: #2980B9; 
-            }
-        """)
-        
+        btn_plus.setProperty("cssClass", "btn_plus") # Hereda estilo del .qss
+        btn_plus.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_plus.clicked.connect(funcion_plus)
         
         h_layout.addWidget(combo)
         h_layout.addWidget(btn_plus)
-        
         return widget, combo
+
+    # --------------------------------------------------------------------------
+    # GESTIÓN DE IMÁGENES EN RED CORPORATIVA
+    # --------------------------------------------------------------------------
+    def seleccionar_imagen(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Seleccionar Imagen", "", "Imágenes (*.png *.jpg *.jpeg)")
+        if file_path:
+            pixmap = QPixmap(file_path)
+            self.lbl_imagen.setPixmap(pixmap.scaled(140, 140, Qt.AspectRatioMode.KeepAspectRatio))
+            self.ruta_imagen_local = file_path 
+
+    def procesar_imagen_servidor(self, sku):
+        if not self.ruta_imagen_local:
+            return None
+        try:
+            os.makedirs(self.PATH_IMAGENES, exist_ok=True)
+            extension = os.path.splitext(self.ruta_imagen_local)[1]
+            nombre_archivo = f"PROD_{sku}{extension}"
+            ruta_destino = os.path.join(self.PATH_IMAGENES, nombre_archivo)
+            
+            # Copiar imagen al servidor
+            shutil.copy2(self.ruta_imagen_local, ruta_destino)
+            return nombre_archivo
+        except Exception as e:
+            print(f"Error guardando imagen en red: {e}")
+            return None
 
     # --------------------------------------------------------------------------
     # PESTAÑA GENERAL 
     # --------------------------------------------------------------------------
     def setup_tab_general(self):
         main_layout = QVBoxLayout(self.tab_general)
-        self.tab_general.setStyleSheet("background-color: #FFFFFF;") 
         
         grp_clasif = QGroupBox("1. Clasificación Principal")
         grid_clasif = QGridLayout()
@@ -527,44 +512,45 @@ class ProductosForm(QWidget):
     # PESTAÑA STOCK, LOTES, COMPOSICION, PRECIOS, KARDEX
     # --------------------------------------------------------------------------
     def setup_tab_stock(self):
-        self.tab_stock.setStyleSheet("background-color: #FFFFFF;")
         l = QVBoxLayout(self.tab_stock)
-        
         self.grid_stock = QTableWidget(0, 9) 
         self.grid_stock.setHorizontalHeaderLabels([
             "ID Almacén", "Nombre Almacén", "Pasillo", "Estante", "Peldaño", 
             "Existencia Real", "Pedidos", "Ord. Compra", "Disponible"
         ])
-        
         h = self.grid_stock.horizontalHeader()
         h.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # ID más pequeño
-        
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         l.addWidget(self.grid_stock)
 
     def setup_tab_composicion(self):
         layout = QVBoxLayout(self.tab_composicion)
-        self.tab_composicion.setStyleSheet("background-color: #FFFFFF;")
         info = QLabel("<b>Receta o Composición del Producto:</b> Agregue los insumos o productos hijos necesarios para armar este producto.")
         layout.addWidget(info)
+        
         toolbar = QHBoxLayout()
-        self.txt_buscar_insumo = QLineEdit(); self.txt_buscar_insumo.setPlaceholderText("Buscar insumo por Código o Nombre...")
+        self.txt_buscar_insumo = QLineEdit()
+        self.txt_buscar_insumo.setPlaceholderText("Escriba SKU o Nombre del insumo y seleccione...")
+        
         btn_add_insumo = QPushButton("➕ Añadir Insumo")
         btn_add_insumo.setStyleSheet("background-color: #2980B9; color: white; font-weight:bold;")
-        toolbar.addWidget(self.txt_buscar_insumo); toolbar.addWidget(btn_add_insumo)
+        btn_add_insumo.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_add_insumo.clicked.connect(self.agregar_insumo_receta) # Conectamos el botón
+        
+        toolbar.addWidget(self.txt_buscar_insumo)
+        toolbar.addWidget(btn_add_insumo)
         layout.addLayout(toolbar)
-        self.grid_receta = QTableWidget(0, 5)
-        self.grid_receta.setHorizontalHeaderLabels(["Código", "Descripción", "Unidad", "Cantidad Requerida", "Costo Aprox ($)"])
+        
+        self.grid_receta = QTableWidget(0, 6) # Ahora son 6 columnas
+        self.grid_receta.setHorizontalHeaderLabels(["Código", "Descripción", "Unidad", "Cantidad Requerida", "Costo Aprox ($)", "Acción"])
         self.grid_receta.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.grid_receta)
 
     def toggle_tab_composicion(self, checked):
         idx = 3 
         self.tabs.setTabEnabled(idx, checked)
-        if checked: self.tabs.setCurrentIndex(idx) 
 
     def setup_tab_lotes(self):
-        self.tab_lotes.setStyleSheet("background-color: #FFFFFF;")
         layout = QVBoxLayout(self.tab_lotes)
         top_panel = QFrame()
         top_panel.setStyleSheet("background-color: #E8F6F3; border: 1px solid #A2D9CE; border-radius: 4px;")
@@ -593,7 +579,6 @@ class ProductosForm(QWidget):
             else: item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable); item.setBackground(QColor("#F2F2F2")); item.setText("")
 
     def setup_tab_precios(self):
-        self.tab_precios.setStyleSheet("background-color: #FFFFFF;")
         layout = QVBoxLayout(self.tab_precios)
         grp_costos = QGroupBox("Estructura de Costos")
         costo_layout = QHBoxLayout()
@@ -621,11 +606,10 @@ class ProductosForm(QWidget):
         grp_costos.setLayout(costo_layout)
         layout.addWidget(grp_costos)
         
-        # Grid Precios (Se llena desde DB)
         self.grid_precios = QTableWidget(0, 7)
         self.grid_precios.setHorizontalHeaderLabels(["ID Tarifa", "Nombre Tarifa","Margen %","Neto $","IVA $","Final $","Final Bs"])
         self.grid_precios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.grid_precios.hideColumn(0) # Ocultar ID Tarifa
+        self.grid_precios.hideColumn(0) 
         self.grid_precios.cellChanged.connect(self.on_grid_precios_changed)
         layout.addWidget(self.grid_precios)
         self.toggle_importacion(False)
@@ -643,7 +627,7 @@ class ProductosForm(QWidget):
             self.recalcular_tabla_precios()
 
     def on_grid_precios_changed(self, row, col):
-        if col == 2: self.recalcular_fila_precio(row) # Columna Margen
+        if col == 2: self.recalcular_fila_precio(row) 
 
     def recalcular_tabla_precios(self):
         self.lbl_costo_bs.setText(f"{self.spin_costo_final.value() * self.tasa_cambio_actual:,.2f} Bs")
@@ -658,7 +642,6 @@ class ProductosForm(QWidget):
             margen = float(item_margen.text())
             neto = self.spin_costo_final.value() * (1 + margen/100)
             
-            # TODO: Leer porcentaje real del combobox de IVA
             iva = neto * 0.16 
             f_usd = neto + iva; f_bs = f_usd * self.tasa_cambio_actual
             self.grid_precios.setItem(row, 3, QTableWidgetItem(f"{neto:.2f}"))
@@ -666,12 +649,10 @@ class ProductosForm(QWidget):
             self.grid_precios.setItem(row, 5, QTableWidgetItem(f"{f_usd:.2f}"))
             self.grid_precios.setItem(row, 6, QTableWidgetItem(f"{f_bs:,.2f}"))
             
-            # Poner columnas como ReadOnly
             for col in [3,4,5,6]: self.grid_precios.item(row, col).setFlags(Qt.ItemFlag.ItemIsEnabled)
         except: pass
 
     def setup_tab_kardex(self):
-        self.tab_kardex.setStyleSheet("background-color: #FFFFFF;")
         l = QVBoxLayout(self.tab_kardex)
         self.grid_kardex = QTableWidget(0, 8)
         self.grid_kardex.setHorizontalHeaderLabels(["Fecha","Tipo","Doc","Tercero","Costo","Ent","Sal","Saldo"])
@@ -679,7 +660,7 @@ class ProductosForm(QWidget):
         l.addWidget(self.grid_kardex)
 
     # --------------------------------------------------------------------------
-    # CARGA DE ESTRUCTURAS DE BASE DE DATOS (COMBOS, GRILLAS DINÁMICAS)
+    # CARGA DINÁMICA
     # --------------------------------------------------------------------------
     def cargar_estructuras_dinamicas(self):
         if not self.conn: return
@@ -687,8 +668,6 @@ class ProductosForm(QWidget):
         
         try:
             cur = self.conn.cursor()
-            
-            # Llenar Grilla de Almacenes Dinámica
             cur.execute("SELECT cod_almacen, nombre_almacen FROM inv_almacenes WHERE cod_compania = %s AND activo = true ORDER BY cod_almacen", (self.cod_compania,))
             almacenes = cur.fetchall()
             self.grid_stock.setRowCount(len(almacenes))
@@ -698,21 +677,19 @@ class ProductosForm(QWidget):
                 
                 self.grid_stock.setItem(i, 0, it_cod)
                 self.grid_stock.setItem(i, 1, it_nom)
-                self.grid_stock.setItem(i, 2, QTableWidgetItem("")) # Pasillo
-                self.grid_stock.setItem(i, 3, QTableWidgetItem("")) # Estante
-                self.grid_stock.setItem(i, 4, QTableWidgetItem("")) # Peldaño
+                self.grid_stock.setItem(i, 2, QTableWidgetItem("")) 
+                self.grid_stock.setItem(i, 3, QTableWidgetItem("")) 
+                self.grid_stock.setItem(i, 4, QTableWidgetItem("")) 
                 
-                # Inicializar cantidades en 0.000 (Solo lectura y alineadas a la derecha)
                 for col in range(5, 9):
                     it_qty = QTableWidgetItem("0.000")
-                    it_qty.setFlags(Qt.ItemFlag.ItemIsEnabled) # Bloqueado
+                    it_qty.setFlags(Qt.ItemFlag.ItemIsEnabled) 
                     it_qty.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    if col == 8: # Color al disponible para resaltar
+                    if col == 8: 
                         it_qty.setForeground(QColor("#27AE60"))
                         it_qty.setFont(QFont("Arial", 10, QFont.Weight.Bold))
                     self.grid_stock.setItem(i, col, it_qty)
                 
-            # Llenar Grilla de Tarifas de Precio Dinámica
             cur.execute("SELECT id_tarifa, nombre_tarifa, margen_sugerido FROM inv_tarifas WHERE cod_compania = %s AND activo = true ORDER BY id_tarifa", (self.cod_compania,))
             tarifas = cur.fetchall()
             self.grid_precios.setRowCount(len(tarifas))
@@ -726,6 +703,7 @@ class ProductosForm(QWidget):
             cur.close()
         except Exception as e:
             print(f"Error cargando grillas: {e}")
+
     def cargar_combos_bd(self):
         try:
             cur = self.conn.cursor()
@@ -740,7 +718,7 @@ class ProductosForm(QWidget):
             llenar(self.cmb_unidad, "inv_unidades", "id_unidad", "cod_unidad")
             
             cur.execute("SELECT id_impuesto, nombre_impuesto, porcentaje FROM cfg_impuestos WHERE cod_compania = %s AND activo = true", (self.cod_compania,))
-            self.cmb_impuesto.clear()
+            self.cmb_impuesto.clear(); self.cmb_impuesto.addItem("Exento / Sin Impuesto", None)
             for row in cur.fetchall(): self.cmb_impuesto.addItem(f"{row[1]} ({row[2]}%)", row[0])
 
             self.cmb_cta.clear(); self.cmb_cta.addItem("Sin asignar", None)
@@ -761,28 +739,40 @@ class ProductosForm(QWidget):
         except: pass
 
     # --------------------------------------------------------------------------
-    # BÚSQUEDA Y CRUD EN BD (LA MAGIA UPSERT)
+    # AUTOCOMPLETADO Y BÚSQUEDA
     # --------------------------------------------------------------------------
-    def configurar_autocompletado(self):
+    def configurar_autocompletado_hibrido(self):
         if not self.conn: return
         try:
             cur = self.conn.cursor()
-            cur.execute("SELECT cod_producto FROM inv_productos WHERE cod_compania = %s", (self.cod_compania,))
-            skus = [r[0] for r in cur.fetchall()]
-            comp_sku = QCompleter(skus, self)
-            comp_sku.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            comp_sku.setFilterMode(Qt.MatchFlag.MatchContains)
-            self.txt_sku.setCompleter(comp_sku)
-            comp_sku.activated.connect(self.cargar_datos_producto)
-
-            cur.execute("SELECT nombre FROM inv_productos WHERE cod_compania = %s", (self.cod_compania,))
-            nombres = [r[0] for r in cur.fetchall()]
-            comp_nom = QCompleter(nombres, self)
-            comp_nom.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            comp_nom.setFilterMode(Qt.MatchFlag.MatchContains)
-            self.txt_nombre.setCompleter(comp_nom)
-            comp_nom.activated.connect(self.cargar_por_nombre)
+            cur.execute("SELECT cod_producto, nombre FROM inv_productos WHERE cod_compania = %s", (self.cod_compania,))
+            data = cur.fetchall()
+            
+            lista_sugerencias = [f"{r[0]} | {r[1]}" for r in data]
+            completer = QCompleter(lista_sugerencias, self)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.activated.connect(self.on_sugerencia_seleccionada)
+            
+            self.txt_sku.setCompleter(completer)
         except: pass
+
+    def on_sugerencia_seleccionada(self, texto):
+        sku = texto.split(" | ")[0].strip()
+        self.cargar_datos_producto(sku)
+
+    def procesar_enter_sku(self):
+        """
+        Si el usuario da Enter y el campo está vacío, abre el buscador.
+        Si escribió algo, intenta cargar el producto y salta al siguiente campo.
+        """
+        sku = self.txt_sku.text().strip()
+        if not sku:
+            self.abrir_catalogo()
+        else:
+            self.cargar_datos_producto(sku)
+            # Salto automático al siguiente campo
+            self.txt_nombre.setFocus()
 
     def abrir_catalogo(self):
         if not self.conn: return
@@ -790,32 +780,62 @@ class ProductosForm(QWidget):
         dlg.producto_seleccionado.connect(self.cargar_datos_producto)
         dlg.exec()
 
-    def cargar_por_nombre(self, nombre):
-        if not self.conn: return
-        try:
-            cur = self.conn.cursor()
-            cur.execute("SELECT cod_producto FROM inv_productos WHERE nombre = %s AND cod_compania = %s", (nombre, self.cod_compania))
-            r = cur.fetchone()
-            if r: self.cargar_datos_producto(r[0])
-        except: pass
+    def limpiar_ficha(self):
+        # Header
+        self.txt_sku.clear()
+        self.txt_sku.setReadOnly(False)
+        self.txt_sku.setStyleSheet("font-weight: bold; font-size: 15px; border: 1px solid #E74C3C; background-color: #FFFFFF;")
+        self.txt_nombre.clear()
+        self.txt_barra.clear()
+        self.lbl_imagen.setPixmap(QPixmap())
+        self.lbl_imagen.setText("FOTO\n(Clic para cambiar)")
+        self.lbl_stock_val.setText("0.00")
+        self.btn_eliminar.setVisible(False)
+        self.ruta_imagen_local = ""
+        
+        # Combos y checks
+        self.cmb_grupo.setCurrentIndex(0)
+        self.cmb_subgrupo.clear()
+        self.cmb_marca.setCurrentIndex(0)
+        self.cmb_unidad.setCurrentIndex(0)
+        self.cmb_impuesto.setCurrentIndex(0)
+        
+        for spin in self.findChildren(QDoubleSpinBox): spin.setValue(0.00)
+        for chk in self.findChildren(QCheckBox): 
+            if chk != self.chk_activo: chk.setChecked(False)
+        
+        self.grid_stock.setRowCount(0)
+        self.grid_precios.setRowCount(0)
+        self.grid_receta.setRowCount(0)
+        self.cargar_estructuras_dinamicas() 
+        
+        self.lbl_auditoria.setText("📝 Modo: Creación de Nuevo Producto")
+        self.txt_sku.setFocus()
+        
+        # Bloquear pestañas que dependen de checks
+        self.toggle_tab_lotes(False)
+        self.toggle_tab_composicion(False)
 
     def cargar_datos_producto(self, sku):
         if not self.conn or not sku: return
+        self.limpiar_ficha()
+        
         try:
             cur = self.conn.cursor()
-            # 1. Cargar Ficha Principal
             sql = """SELECT nombre, cod_barra, id_grupo, id_subgrupo, id_categoria, id_marca, id_unidad, 
                             tipo_producto, partida_arancelaria, id_impuesto, id_cuenta_contable, tipo_costeo,
                             es_activo, es_servicio, es_fraccionario, es_compuesto, es_medicamento, usa_lotes, es_importado,
                             peso_kg, alto_cm, ancho_cm, largo_cm, unds_bulto, stock_minimo, stock_maximo,
                             costo_fob, costo_flete, costo_seguro, costo_arancel, costo_otros, costo_final_usd, cod_alterno, 
-                            descripcion_larga, estrategia_precio_lote, fecha_registro, fecha_modifica
+                            descripcion_larga, estrategia_precio_lote, fecha_registro, fecha_modifica, ruta_imagen
                      FROM inv_productos WHERE cod_producto = %s AND cod_compania = %s"""
             cur.execute(sql, (sku, self.cod_compania))
             row = cur.fetchone()
             
             if row:
                 self.txt_sku.setText(sku)
+                self.txt_sku.setReadOnly(True)
+                self.txt_sku.setStyleSheet("font-weight: bold; font-size: 15px; border: 1px solid #BDC3C7; background-color: #E8ECEF;")
                 self.txt_nombre.setText(row[0])
                 self.txt_barra.setText(row[1] or "")
                 
@@ -865,50 +885,107 @@ class ProductosForm(QWidget):
                 f_mod = row[36].strftime("%d/%m/%Y %H:%M") if row[36] else "-"
                 self.lbl_auditoria.setText(f"📝 Registrado por: Sistema | Fecha: {f_crea}  ---  ✏️ Última Modificación: {f_mod}")
                 self.btn_eliminar.setVisible(True)
-
-                # 2. Cargar Existencias (Ubicaciones y Cantidades en grilla)
-                cur.execute("""
-                    SELECT cod_almacen, pasillo, estante, peldano, cantidad_real 
-                    FROM inv_existencias 
-                    WHERE cod_producto = %s AND cod_compania = %s
-                """, (sku, self.cod_compania))
                 
+                # Cargar imagen desde el servidor
+                nombre_img = row[37]
+                if nombre_img:
+                    full_path = os.path.join(self.PATH_IMAGENES, nombre_img)
+                    if os.path.exists(full_path):
+                        self.lbl_imagen.setPixmap(QPixmap(full_path).scaled(140, 140, Qt.AspectRatioMode.KeepAspectRatio))
+                    else:
+                        self.lbl_imagen.setText("IMAGEN\nNO ENCONTRADA")
+
+                # Cargar Existencias
+                cur.execute("SELECT cod_almacen, pasillo, estante, peldano, cantidad_real FROM inv_existencias WHERE cod_producto = %s AND cod_compania = %s", (sku, self.cod_compania))
                 existencias = cur.fetchall()
                 stock_total_kpi = 0.0
                 
                 for e in existencias:
                     for i in range(self.grid_stock.rowCount()):
                         if self.grid_stock.item(i, 0).text() == e[0]:
-                            # Cargar Ubicación Fìsica
                             self.grid_stock.setItem(i, 2, QTableWidgetItem(e[1] or ""))
                             self.grid_stock.setItem(i, 3, QTableWidgetItem(e[2] or ""))
                             self.grid_stock.setItem(i, 4, QTableWidgetItem(e[3] or ""))
                             
-                            # Cargar y sumar Existencia Real
                             real_qty = float(e[4] or 0)
                             stock_total_kpi += real_qty
                             
-                            # Simulamos 0 en pedidos y OC temporalmente hasta tener esos módulos
-                            pedidos = 0.0
-                            oc = 0.0
-                            disponible = real_qty - pedidos + oc
-                            
-                            # Actualizar celdas numéricas
-                            cantidades = [real_qty, pedidos, oc, disponible]
+                            cantidades = [real_qty, 0.0, 0.0, real_qty] # Disponible = Real (por ahora)
                             for col_offset, val in enumerate(cantidades):
                                 it_qty = QTableWidgetItem(f"{val:.3f}")
                                 it_qty.setFlags(Qt.ItemFlag.ItemIsEnabled)
                                 it_qty.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                                if col_offset == 3: # Disponible
+                                if col_offset == 3: 
                                     it_qty.setForeground(QColor("#27AE60"))
                                     it_qty.setFont(QFont("Arial", 10, QFont.Weight.Bold))
                                 self.grid_stock.setItem(i, 5 + col_offset, it_qty)
                             break
                             
-                # Actualizar el gran KPI visual del encabezado
                 self.lbl_stock_val.setText(f"{stock_total_kpi:,.2f}")
 
-                # 3. Cargar Precios (Grilla)
+                # --- CARGAR RECETA (COMPOSICIÓN) ---
+                cur.execute("""
+                    SELECT r.cod_producto_hijo, p.nombre, u.cod_unidad, r.cantidad_requerida, p.costo_final_usd
+                    FROM inv_productos_recetas r
+                    JOIN inv_productos p ON r.cod_producto_hijo = p.cod_producto AND r.cod_compania = p.cod_compania
+                    LEFT JOIN inv_unidades u ON p.id_unidad = u.id_unidad
+                    WHERE r.cod_producto_padre = %s AND r.cod_compania = %s
+                """, (sku, self.cod_compania))
+                self.grid_receta.setRowCount(0)
+                for idx, rec in enumerate(cur.fetchall()):
+                    self.grid_receta.insertRow(idx)
+                    self.grid_receta.setItem(idx, 0, QTableWidgetItem(str(rec[0])))
+                    self.grid_receta.setItem(idx, 1, QTableWidgetItem(str(rec[1])))
+                    self.grid_receta.setItem(idx, 2, QTableWidgetItem(str(rec[2] or "UND")))
+                    
+                    it_cant = QTableWidgetItem(f"{rec[3]:.4f}")
+                    self.grid_receta.setItem(idx, 3, it_cant)
+                    
+                    it_cost = QTableWidgetItem(f"{rec[4] or 0:.2f}")
+                    it_cost.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    self.grid_receta.setItem(idx, 4, it_cost)
+                    
+                    # Botón de eliminar en la grilla
+                    btn_del = QPushButton("❌")
+                    btn_del.setStyleSheet("color: #E74C3C; font-weight: bold; border: none; background: transparent;")
+                    btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn_del.clicked.connect(self.eliminar_fila_receta)
+                    self.grid_receta.setCellWidget(idx, 5, btn_del)
+
+                # --- CARGAR KARDEX (MOVIMIENTOS) ---
+                cur.execute("""
+                    SELECT m.fecha_movimiento, m.tipo_movimiento, m.documento_origen, 
+                           COALESCE(prov.nombre_proveedor, cli.razon_social, 'Ajuste / S/I') AS tercero, 
+                           m.costo_unitario_usd, m.cantidad, m.saldo_cantidad
+                    FROM inv_movimientos m
+                    LEFT JOIN com_proveedores prov ON m.cod_compania = prov.cod_compania AND m.cod_proveedor = prov.cod_proveedor
+                    LEFT JOIN ven_clientes cli ON m.cod_compania = cli.cod_compania AND m.cod_cliente = cli.cod_cliente
+                    WHERE m.cod_producto = %s AND m.cod_compania = %s
+                    ORDER BY m.fecha_movimiento DESC LIMIT 100
+                """, (sku, self.cod_compania))
+                
+                self.grid_kardex.setRowCount(0)
+                for idx, mov in enumerate(cur.fetchall()):
+                    self.grid_kardex.insertRow(idx)
+                    self.grid_kardex.setItem(idx, 0, QTableWidgetItem(mov[0].strftime("%d/%m/%Y %H:%M")))
+                    self.grid_kardex.setItem(idx, 1, QTableWidgetItem(str(mov[1])))
+                    self.grid_kardex.setItem(idx, 2, QTableWidgetItem(str(mov[2] or "")))
+                    self.grid_kardex.setItem(idx, 3, QTableWidgetItem(str(mov[3]))) # Muestra Proveedor, Cliente o "Ajuste / S/I"
+                    self.grid_kardex.setItem(idx, 4, QTableWidgetItem(f"{mov[4]:.2f}"))
+                    
+                    cant = float(mov[5] or 0)
+                    if mov[1] == 'ENTRADA':
+                        self.grid_kardex.setItem(idx, 5, QTableWidgetItem(f"{cant:.3f}"))
+                        self.grid_kardex.setItem(idx, 6, QTableWidgetItem(""))
+                    else:
+                        self.grid_kardex.setItem(idx, 5, QTableWidgetItem(""))
+                        self.grid_kardex.setItem(idx, 6, QTableWidgetItem(f"{cant:.3f}"))
+                    
+                    it_saldo = QTableWidgetItem(f"{mov[6]:.3f}")
+                    # it_saldo.setFont(QFont("Arial", 9, QFont.Weight.Bold)) # Descomenta si importaste QFont
+                    self.grid_kardex.setItem(idx, 7, it_saldo)
+                    
+                # Cargar Precios
                 cur.execute("SELECT id_tarifa, margen_porcentaje FROM inv_precios WHERE cod_producto = %s AND cod_compania = %s", (sku, self.cod_compania))
                 precios = cur.fetchall()
                 for p in precios:
@@ -919,22 +996,27 @@ class ProductosForm(QWidget):
                 self.recalcular_tabla_precios()
                 self.calcular_volumen()
             else:
-                self.btn_eliminar.setVisible(False)
+                QMessageBox.information(self, "Nuevo", f"El código {sku} está disponible para ser creado.")
+                self.txt_sku.setText(sku)
+                self.txt_nombre.setFocus()
         except Exception as e:
             QMessageBox.warning(self, "Error Carga", f"No se pudo cargar: {e}")
 
+    # --------------------------------------------------------------------------
+    # GUARDAR Y ELIMINAR 
+    # --------------------------------------------------------------------------
     def guardar_producto(self):
-        sku = self.txt_sku.text().strip()
+        sku = self.txt_sku.text().strip().upper()
         nombre = self.txt_nombre.text().strip()
         
         if not sku or not nombre:
-            QMessageBox.warning(self, "Validación", "El SKU y el Nombre son obligatorios.")
+            QMessageBox.warning(self, "Validación", "El SKU y el Nombre son obligatorios (están marcados en rojo).")
             return
 
         try:
             cur = self.conn.cursor()
+            nombre_imagen = self.procesar_imagen_servidor(sku)
             
-            # UPSERT PRODUCTO
             sql_prod = """
                 INSERT INTO inv_productos (
                     cod_compania, cod_producto, nombre, descripcion_larga, cod_barra, cod_alterno,
@@ -942,10 +1024,11 @@ class ProductosForm(QWidget):
                     id_impuesto, id_cuenta_contable, tipo_costeo, es_activo, es_servicio, es_fraccionario,
                     es_compuesto, es_medicamento, usa_lotes, es_importado, estrategia_precio_lote,
                     peso_kg, alto_cm, ancho_cm, largo_cm, volumen_m3, unds_bulto, stock_minimo, stock_maximo,
-                    costo_fob, costo_flete, costo_seguro, costo_arancel, costo_otros, costo_final_usd, id_usuario_crea
+                    costo_fob, costo_flete, costo_seguro, costo_arancel, costo_otros, costo_final_usd, id_usuario_crea,
+                    ruta_imagen
                 ) VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 ) ON CONFLICT (cod_compania, cod_producto) DO UPDATE SET
                     nombre = EXCLUDED.nombre, descripcion_larga = EXCLUDED.descripcion_larga, 
                     cod_barra = EXCLUDED.cod_barra, cod_alterno = EXCLUDED.cod_alterno,
@@ -960,10 +1043,12 @@ class ProductosForm(QWidget):
                     volumen_m3 = EXCLUDED.volumen_m3, unds_bulto = EXCLUDED.unds_bulto, stock_minimo = EXCLUDED.stock_minimo, 
                     stock_maximo = EXCLUDED.stock_maximo, costo_fob = EXCLUDED.costo_fob, costo_flete = EXCLUDED.costo_flete,
                     costo_seguro = EXCLUDED.costo_seguro, costo_arancel = EXCLUDED.costo_arancel, costo_otros = EXCLUDED.costo_otros,
-                    costo_final_usd = EXCLUDED.costo_final_usd, fecha_modifica = CURRENT_TIMESTAMP
+                    costo_final_usd = EXCLUDED.costo_final_usd, fecha_modifica = CURRENT_TIMESTAMP,
+                    ruta_imagen = COALESCE(EXCLUDED.ruta_imagen, inv_productos.ruta_imagen)
             """
             
-            vol = float(self.lbl_vol.text().replace(" m³", ""))
+            vol_str = self.lbl_vol.text().replace(" m³", "").replace(",", ".")
+            vol = float(vol_str) if vol_str else 0.0
             est_precio = "GENERAL" if self.radio_precio_general.isChecked() else "POR_LOTE"
             
             params_prod = (
@@ -977,16 +1062,15 @@ class ProductosForm(QWidget):
                 self.spin_peso.value(), self.spin_alto.value(), self.spin_ancho.value(), self.spin_largo.value(),
                 vol, self.spin_bulto.value(), self.spin_stock_min.value(), self.spin_stock_max.value(),
                 self.spin_fob.value(), self.spin_flete.value(), self.spin_seguro.value(), self.spin_arancel.value(),
-                self.spin_otros.value(), self.spin_costo_final.value(), self.id_usuario
+                self.spin_otros.value(), self.spin_costo_final.value(), self.id_usuario, nombre_imagen
             )
             cur.execute(sql_prod, params_prod)
 
-            # UPSERT EXISTENCIAS (Solo ubicación, la cantidad no se sobreescribe manual)
             for i in range(self.grid_stock.rowCount()):
                 cod_alm = self.grid_stock.item(i, 0).text()
-                pasillo = self.grid_stock.item(i, 2).text()
-                estante = self.grid_stock.item(i, 3).text()
-                peldano = self.grid_stock.item(i, 4).text()
+                pasillo = self.grid_stock.item(i, 2).text() if self.grid_stock.item(i, 2) else ""
+                estante = self.grid_stock.item(i, 3).text() if self.grid_stock.item(i, 3) else ""
+                peldano = self.grid_stock.item(i, 4).text() if self.grid_stock.item(i, 4) else ""
                 
                 sql_ex = """
                     INSERT INTO inv_existencias (cod_compania, cod_almacen, cod_producto, pasillo, estante, peldano)
@@ -996,14 +1080,18 @@ class ProductosForm(QWidget):
                 """
                 cur.execute(sql_ex, (self.cod_compania, cod_alm, sku, pasillo, estante, peldano))
 
-            # UPSERT PRECIOS
             for i in range(self.grid_precios.rowCount()):
                 id_tar = int(self.grid_precios.item(i, 0).text())
-                margen = float(self.grid_precios.item(i, 2).text() or 0)
-                neto = float(self.grid_precios.item(i, 3).text() or 0)
-                iva = float(self.grid_precios.item(i, 4).text() or 0)
-                f_usd = float(self.grid_precios.item(i, 5).text() or 0)
-                f_bs = float(self.grid_precios.item(i, 6).text().replace(',', '') or 0)
+                try: margen = float(self.grid_precios.item(i, 2).text() or 0)
+                except: margen = 0.0
+                try: neto = float(self.grid_precios.item(i, 3).text() or 0)
+                except: neto = 0.0
+                try: iva = float(self.grid_precios.item(i, 4).text() or 0)
+                except: iva = 0.0
+                try: f_usd = float(self.grid_precios.item(i, 5).text() or 0)
+                except: f_usd = 0.0
+                try: f_bs = float(self.grid_precios.item(i, 6).text().replace(',', '') or 0)
+                except: f_bs = 0.0
                 
                 sql_pr = """
                     INSERT INTO inv_precios (cod_compania, cod_producto, id_tarifa, margen_porcentaje, precio_neto_usd, monto_iva_usd, precio_final_usd, precio_final_bs)
@@ -1014,48 +1102,40 @@ class ProductosForm(QWidget):
                 """
                 cur.execute(sql_pr, (self.cod_compania, sku, id_tar, margen, neto, iva, f_usd, f_bs))
 
+            if self.chk_compuesto.isChecked():
+                cur.execute("DELETE FROM inv_productos_recetas WHERE cod_compania = %s AND cod_producto_padre = %s", (self.cod_compania, sku))
+                for i in range(self.grid_receta.rowCount()):
+                    hijo_sku = self.grid_receta.item(i, 0).text()
+                    try: cant_req = float(self.grid_receta.item(i, 3).text() or 0)
+                    except: cant_req = 0.0
+                    if hijo_sku and cant_req > 0:
+                        cur.execute("INSERT INTO inv_productos_recetas (cod_compania, cod_producto_padre, cod_producto_hijo, cantidad_requerida) VALUES (%s, %s, %s, %s)", (self.cod_compania, sku, hijo_sku, cant_req))
+
             self.conn.commit()
-            QMessageBox.information(self, "Guardado", f"El producto {sku} ha sido procesado correctamente.")
-            self.limpiar_ficha()
-            self.configurar_autocompletado() # Recargar memoria
-            
+            QMessageBox.information(self, "Guardado", f"El producto {sku} se guardó exitosamente.")
+            self.configurar_autocompletado_hibrido() 
+            self.cargar_datos_producto(sku) 
         except Exception as e:
             self.conn.rollback()
-            QMessageBox.critical(self, "Error SQL", f"Error al guardar: {e}")
+            QMessageBox.critical(self, "Error BD", f"Error al guardar:\n{str(e)}")
 
     def eliminar_producto(self):
         sku = self.txt_sku.text()
         if not sku: return
-        resp = QMessageBox.question(self, "Confirmar", f"¿Está seguro que desea eliminar el producto {sku}?\nSe eliminarán sus precios y ubicaciones (No se puede si tiene movimientos en Kardex).", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        resp = QMessageBox.question(self, "Confirmar", f"¿Eliminar definitivamente el producto {sku}?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resp == QMessageBox.StandardButton.Yes:
             try:
                 cur = self.conn.cursor()
+                cur.execute("DELETE FROM inv_productos_recetas WHERE cod_compania=%s AND cod_producto_padre=%s", (self.cod_compania, sku))
                 cur.execute("DELETE FROM inv_existencias WHERE cod_producto=%s AND cod_compania=%s", (sku, self.cod_compania))
                 cur.execute("DELETE FROM inv_precios WHERE cod_producto=%s AND cod_compania=%s", (sku, self.cod_compania))
                 cur.execute("DELETE FROM inv_productos WHERE cod_producto=%s AND cod_compania=%s", (sku, self.cod_compania))
                 self.conn.commit()
-                QMessageBox.information(self, "Eliminado", "Producto eliminado correctamente.")
+                QMessageBox.information(self, "Eliminado", "Producto eliminado.")
                 self.limpiar_ficha()
             except Exception as e:
                 self.conn.rollback()
-                QMessageBox.warning(self, "Bloqueo", "No se puede eliminar el producto porque tiene movimientos o relaciones activas.")
-
-    def limpiar_ficha(self):
-        self.txt_sku.clear(); self.txt_nombre.clear(); self.txt_barra.clear()
-        self.txt_cod_alt.clear(); self.txt_arancel.clear(); self.txt_desc_larga.clear()
-        
-        self.spin_costo_final.setValue(0); self.spin_peso.setValue(0); self.spin_bulto.setValue(1)
-        self.spin_alto.setValue(0); self.spin_ancho.setValue(0); self.spin_largo.setValue(0)
-        self.spin_stock_min.setValue(0); self.spin_stock_max.setValue(0)
-        
-        self.chk_activo.setChecked(True); self.cmb_grupo.setCurrentIndex(0)
-        self.chk_fraccionario.setChecked(False); self.chk_compuesto.setChecked(False)
-        self.chk_lotes.setChecked(False); self.chk_medicamento.setChecked(False)
-        self.chk_importado.setChecked(False); self.chk_servicio.setChecked(False)
-        
-        self.btn_eliminar.setVisible(False)
-        self.lbl_auditoria.setText(f"📝 Registrado por: {self.nombre_usuario_actual} | Fecha: {datetime.now().strftime('%d/%m/%Y')}  ---  ✏️ Modificado por: Ninguno")
-        self.cargar_estructuras_dinamicas() # Resetea las grillas limpias
+                QMessageBox.warning(self, "Bloqueo", "No se puede eliminar el producto porque está en uso.")
 
     def abrir_maestro(self, titulo, tabla, pk, campo_nombre):
         if not self.conn: return
@@ -1073,9 +1153,85 @@ class ProductosForm(QWidget):
         dlg.datos_actualizados.connect(self.filtrar_subgrupos)
         dlg.exec()
 
-    def seleccionar_imagen(self):
-        archivo, _ = QFileDialog.getOpenFileName(self, "Imagen", "", "Img (*.png *.jpg)")
-        if archivo: self.lbl_imagen.setPixmap(QPixmap(archivo))
+    # --------------------------------------------------------------------------
+    # LÓGICA DE LA RECETA / COMPOSICIÓN
+    # --------------------------------------------------------------------------
+    def configurar_autocompletado_insumos(self):
+        if not self.conn: return
+        try:
+            cur = self.conn.cursor()
+            cur.execute("SELECT cod_producto, nombre FROM inv_productos WHERE cod_compania = %s", (self.cod_compania,))
+            data = cur.fetchall()
+            lista_sugerencias = [f"{r[0]} | {r[1]}" for r in data]
+            completer = QCompleter(lista_sugerencias, self)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            self.txt_buscar_insumo.setCompleter(completer)
+        except: pass
+
+    def agregar_insumo_receta(self):
+        texto = self.txt_buscar_insumo.text().strip()
+        if not texto: return
+        
+        # Extraer el SKU de la sugerencia "CÓDIGO | NOMBRE"
+        sku_hijo = texto.split(" | ")[0].strip()
+        
+        try:
+            cur = self.conn.cursor()
+            cur.execute("""
+                SELECT p.nombre, u.cod_unidad, p.costo_final_usd 
+                FROM inv_productos p 
+                LEFT JOIN inv_unidades u ON p.id_unidad = u.id_unidad 
+                WHERE p.cod_producto = %s AND p.cod_compania = %s
+            """, (sku_hijo, self.cod_compania))
+            row = cur.fetchone()
+            
+            if row:
+                # 1. Verificar que no agregue el mismo producto que estamos editando
+                if sku_hijo == self.txt_sku.text():
+                    QMessageBox.warning(self, "Operación Inválida", "Un producto no puede ser insumo de sí mismo.")
+                    return
+
+                # 2. Verificar que no exista ya en la grilla
+                for i in range(self.grid_receta.rowCount()):
+                    if self.grid_receta.item(i, 0).text() == sku_hijo:
+                        QMessageBox.warning(self, "Aviso", "Este insumo ya se encuentra en la receta.")
+                        return
+                        
+                # 3. Agregar a la grilla
+                idx = self.grid_receta.rowCount()
+                self.grid_receta.insertRow(idx)
+                
+                self.grid_receta.setItem(idx, 0, QTableWidgetItem(sku_hijo))
+                self.grid_receta.setItem(idx, 1, QTableWidgetItem(row[0]))
+                self.grid_receta.setItem(idx, 2, QTableWidgetItem(row[1] or "UND"))
+                
+                it_cant = QTableWidgetItem("1.0000") # Cantidad por defecto
+                self.grid_receta.setItem(idx, 3, it_cant)
+                
+                it_costo = QTableWidgetItem(f"{row[2] or 0:.2f}")
+                it_costo.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.grid_receta.setItem(idx, 4, it_costo)
+                
+                btn_del = QPushButton("❌")
+                btn_del.setStyleSheet("color: #E74C3C; font-weight: bold; border: none; background: transparent;")
+                btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn_del.clicked.connect(self.eliminar_fila_receta)
+                self.grid_receta.setCellWidget(idx, 5, btn_del)
+                
+                self.txt_buscar_insumo.clear()
+            else:
+                QMessageBox.warning(self, "Error", "El código de insumo seleccionado no existe.")
+        except Exception as e:
+            print(f"Error agregando insumo: {e}")
+
+    def eliminar_fila_receta(self):
+        # Esta es la forma 100% segura de eliminar filas dinámicas en PyQt
+        boton = self.sender()
+        if boton:
+            index = self.grid_receta.indexAt(boton.pos())
+            if index.isValid():
+                self.grid_receta.removeRow(index.row())
 
     def calcular_volumen(self):
         v = (self.spin_alto.value() * self.spin_ancho.value() * self.spin_largo.value()) / 1000000

@@ -1,3 +1,0 @@
-Instalar en Python
-python -m pip install openpyxl
-python -m pip install reportlab

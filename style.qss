@@ -1,0 +1,92 @@
+/* =========================================================================
+   NEXUS PRIME ERP - HOJA DE ESTILOS GLOBAL (Guía para todo el equipo)
+   ========================================================================= */
+
+/* Fondo general de las ventanas */
+QMainWindow, QDialog, QWidget { 
+    background-color: #F4F6F9; 
+    color: #333333; 
+    font-family: 'Segoe UI', sans-serif; 
+}
+
+/* Paneles blancos y agrupaciones */
+QGroupBox { 
+    font-weight: bold; 
+    border: 1px solid #BDC3C7; 
+    border-radius: 6px; 
+    margin-top: 25px; 
+    padding-top: 15px; 
+    padding-bottom: 10px;
+    background-color: #E8ECEF; 
+}
+QGroupBox::title { 
+    subcontrol-origin: margin; 
+    subcontrol-position: top left; 
+    left: 15px; 
+    top: 0px; 
+    padding: 5px 8px; 
+    color: #2C3E50;
+}
+
+/* Controles de texto y selección */
+QLineEdit, QComboBox, QDateEdit, QDoubleSpinBox, QTextEdit { 
+    background-color: #FFFFFF; 
+    border: 1px solid #BDC3C7; 
+    border-radius: 4px; 
+    padding: 5px; 
+    min-height: 22px; 
+    selection-background-color: #3498DB; 
+}
+QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus, QTextEdit:focus { 
+    border: 1px solid #3498DB; 
+}
+
+/* Pestañas */
+QTabWidget::pane { border: 1px solid #BDC3C7; background: #FFFFFF; }
+QTabBar::tab { background: #D5DBDB; padding: 8px 15px; border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px;}
+QTabBar::tab:selected { background: #FFFFFF; font-weight: bold; border-bottom: none; }
+
+/* Tablas (Grillas) */
+QTableWidget { 
+    background-color: #FFFFFF; 
+    alternate-background-color: #F9F9F9; 
+    gridline-color: #EEEEEE; 
+    border: 1px solid #DDDDDD; 
+}
+QHeaderView::section { 
+    background-color: #34495E; 
+    color: white; 
+    padding: 6px; 
+    font-weight: bold; 
+    border: none; 
+    font-size: 11px; 
+}
+
+/* =========================================================================
+   BOTONES ESTANDARIZADOS (¡Usen estas clases dinámicas!)
+   ========================================================================= */
+QPushButton { 
+    font-weight: bold; 
+    padding: 8px 15px; 
+    border-radius: 4px; 
+}
+
+/* Botón Guardar / Principal */
+QPushButton#btn_guardar { background-color: #27AE60; color: white; }
+QPushButton#btn_guardar:hover { background-color: #2ECC71; }
+
+/* Botón Eliminar / Peligro */
+QPushButton#btn_eliminar, QPushButton[cssClass="btn_delete"] { background-color: #E74C3C; color: white; }
+QPushButton#btn_eliminar:hover, QPushButton[cssClass="btn_delete"]:hover { background-color: #C0392B; }
+
+/* Botón Limpiar / Secundario */
+QPushButton#btn_limpiar { background-color: #95A5A6; color: white; }
+QPushButton#btn_limpiar:hover { background-color: #7F8C8D; }
+
+/* Botoncito "+" azul */
+QPushButton[cssClass="btn_plus"] { background-color: #3498DB; color: white; padding: 0px; border-radius: 4px; }
+QPushButton[cssClass="btn_plus"]:hover { background-color: #2980B9; }
+
+/* Botón Buscar Naranja */
+QPushButton[cssClass="btn_search"] { background-color: #E67E22; color: white; border: none; text-align: left; }
+QPushButton[cssClass="btn_search"]:hover { background-color: #D35400; }

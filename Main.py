@@ -1,4 +1,5 @@
 import sys
+import os
 import psycopg2
 import hashlib
 from PyQt6.QtWidgets import (
@@ -159,6 +160,21 @@ class LoginDialog(QDialog):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    
+    # --- LA MAGIA CORREGIDA ---
+    # 1. Obtenemos la ruta absoluta de la carpeta donde está Main.py
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # 2. Unimos esa ruta con el nombre del archivo
+    ruta_css = os.path.join(base_dir, "style.qss")
+    
+    try:
+        with open(ruta_css, "r", encoding="utf-8") as f:
+            app.setStyleSheet(f.read())
+        print("Estilos cargados correctamente.") # Mensaje de control
+    except Exception as e:
+        print(f"ERROR CRÍTICO: No se pudo cargar style.qss en {ruta_css} - {e}")
+        
     login = LoginDialog()
     if login.exec() == QDialog.DialogCode.Accepted:
         menu = MenuPrincipal(

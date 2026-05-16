@@ -11,16 +11,6 @@ from PyQt6.QtGui import QFont, QPalette, QColor, QCursor
 from PyQt6.QtCore import Qt, QTimer, QTime, QDate
 from db_config import DB_PARAMS
 
-from proveedores_form import ProveedorForm
-from productos_form import ProductosForm
-from empresas_form import EmpresasForm
-from usuarios_form import UsuariosForm
-from almacenes_form import AlmacenesForm
-from tarifas_form import TarifasForm
-from impuestos_form import ImpuestosForm
-from compras_form import ComprasForm
-from correlativos_form import CorrelativosForm # <--- NUEVA IMPORTACIÓN
-
 class MenuPrincipal(QMainWindow):
     def __init__(self, cod_compania, id_usuario, nombre_empresa, rol_usuario, nombre_real_usuario):
         super().__init__()
@@ -40,6 +30,7 @@ class MenuPrincipal(QMainWindow):
         self.ventana_impuestos = None
         self.ventana_compras = None
         self.ventana_correlativos = None # <--- NUEVA INSTANCIA
+        self.ventana_produccion = None
         
         self.permisos_activos = []
 
@@ -207,6 +198,11 @@ class MenuPrincipal(QMainWindow):
             btn_compras = self.crear_boton_dashboard("🛒", "Compras", "Registro de Facturas", self.abrir_compras)
             grid_ops.addWidget(btn_compras, 0, col_ops_idx)
             col_ops_idx += 1
+
+        if self.tiene_permiso("Producción") or self.tiene_permiso("Productos / Inventario"):
+            btn_produccion = self.crear_boton_dashboard("⚙️", "Producción", "Órdenes de Trabajo", self.abrir_produccion)
+            grid_ops.addWidget(btn_produccion, 0, col_ops_idx)
+            col_ops_idx += 1
             
         grid_ops.addItem(QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 0, col_ops_idx)
         grid_ops.setRowStretch(1, 1)
@@ -333,48 +329,56 @@ class MenuPrincipal(QMainWindow):
 
     def abrir_proveedores(self):
         if self.ventana_proveedores is None or not self.ventana_proveedores.isVisible():
+            from Vistas.proveedores_form import ProveedorForm
             self.ventana_proveedores = ProveedorForm(self.cod_compania, self.id_usuario, self.nombre_empresa)
             self.ventana_proveedores.showMaximized()
         else: self.ventana_proveedores.activateWindow()
 
     def abrir_productos(self):
         if self.ventana_productos is None or not self.ventana_productos.isVisible():
+            from productos_form import ProductosForm
             self.ventana_productos = ProductosForm(self.cod_compania, self.id_usuario, self.nombre_empresa)
             self.ventana_productos.showMaximized()
         else: self.ventana_productos.activateWindow()
 
     def abrir_empresas(self):
         if self.ventana_empresas is None or not self.ventana_empresas.isVisible():
+            from Vistas.empresas_form import EmpresasForm
             self.ventana_empresas = EmpresasForm(self.id_usuario)
             self.ventana_empresas.showMaximized()
         else: self.ventana_empresas.activateWindow()
 
     def abrir_usuarios(self):
         if self.ventana_usuarios is None or not self.ventana_usuarios.isVisible():
+            from Vistas.usuarios_form import UsuariosForm
             self.ventana_usuarios = UsuariosForm(self.id_usuario)
             self.ventana_usuarios.showMaximized()
         else: self.ventana_usuarios.activateWindow()
 
     def abrir_almacenes(self):
         if self.ventana_almacenes is None or not self.ventana_almacenes.isVisible():
+            from almacenes_form import AlmacenesForm
             self.ventana_almacenes = AlmacenesForm(self.cod_compania, self.nombre_empresa)
             self.ventana_almacenes.show()
         else: self.ventana_almacenes.activateWindow()
 
     def abrir_tarifas(self):
         if getattr(self, 'ventana_tarifas', None) is None or not self.ventana_tarifas.isVisible():
+            from tarifas_form import TarifasForm
             self.ventana_tarifas = TarifasForm(self.cod_compania, self.nombre_empresa)
             self.ventana_tarifas.show()
         else: self.ventana_tarifas.activateWindow()
 
     def abrir_impuestos(self):
         if getattr(self, 'ventana_impuestos', None) is None or not self.ventana_impuestos.isVisible():
+            from impuestos_form import ImpuestosForm
             self.ventana_impuestos = ImpuestosForm(self.cod_compania, self.nombre_empresa)
             self.ventana_impuestos.show()
         else: self.ventana_impuestos.activateWindow()
 
     def abrir_compras(self):
         if self.ventana_compras is None or not self.ventana_compras.isVisible():
+            from Vistas.compras_form import ComprasForm
             self.ventana_compras = ComprasForm(self.cod_compania, self.id_usuario, self.nombre_empresa)
             self.ventana_compras.showMaximized()
         else: self.ventana_compras.activateWindow()
@@ -382,6 +386,16 @@ class MenuPrincipal(QMainWindow):
     # --- NUEVA FUNCIÓN ---
     def abrir_correlativos(self):
         if self.ventana_correlativos is None or not self.ventana_correlativos.isVisible():
+            from correlativos_form import CorrelativosForm # <--- NUEVA IMPORTACIÓN
             self.ventana_correlativos = CorrelativosForm(self.cod_compania, self.nombre_empresa)
             self.ventana_correlativos.show()
         else: self.ventana_correlativos.activateWindow()
+
+    def abrir_produccion(self):
+        if self.ventana_produccion is None or not self.ventana_produccion.isVisible():
+            # Pasamos None a la conexión para que el formulario la cree usando DB_PARAMS
+            from produccion_form import ProduccionForm
+            self.ventana_produccion = ProduccionForm(None, self.cod_compania, self.id_usuario)
+            self.ventana_produccion.showMaximized()
+        else: 
+            self.ventana_produccion.activateWindow()
